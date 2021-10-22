@@ -1,3 +1,16 @@
+build_cst/build_cst
+build_cst/cmdline.c
+build_cst/cmdline.h
+build_cst/config.h
+build_msa_index/build_msa_index
+build_msa_index/cmdline.c
+build_msa_index/cmdline.h
+build_msa_index/config.h
+find_founder_block_boundaries/cmdline.c
+find_founder_block_boundaries/cmdline.h
+find_founder_block_boundaries/config.h
+find_founder_block_boundaries/find_founder_block_boundaries
+
 # Prerequisites
 *.d
 

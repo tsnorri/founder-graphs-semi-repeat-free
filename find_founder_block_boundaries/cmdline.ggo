@@ -1,0 +1,11 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"find-founder-block-boundaries"
+purpose		"Find founder block boundaries from an input MSA"
+usage		"find_founder_block_boundaries --sequence-list=input-list.txt --cst=cst.dat --msa-index=msa-index.dat"
+description	"Determines semi-repeat-free founder block boundaries from the input MSA."
+
+option		"sequence-list"	-	"Input sequence list path"	string		typestr = "filename"		required
+option		"cst"			-	"Input CST path"			string		typestr = "filename"		required
+option		"msa-index"		-	"Input MSA index path"		string		typestr = "filename"		required

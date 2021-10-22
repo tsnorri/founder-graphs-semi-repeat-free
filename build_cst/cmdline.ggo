@@ -1,0 +1,9 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"build-cst"
+purpose		"Build a compressed suffix tree"
+usage		"build_cst --input=filename.txt"
+description	"Builds a suffix tree for generating an index based on a founder graph. The inputs are the concatenated unaligned sequences."
+
+option		"input"		i	"Input file path"			string		typestr = "filename"					required

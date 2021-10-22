@@ -1,0 +1,9 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"optimize-segmentation"
+purpose		"Optimize the segmentation produced by find_founder_block_boundaries"
+usage		"find_founder_block_boundaries [...] | optimize_segmentation --sequence-list=input-list.txt"
+description	"Uses the MSA to determine equivalent substrings."
+
+option		"sequence-list"	-	"Input sequence list path"	string		typestr = "filename"		required
