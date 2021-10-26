@@ -105,6 +105,7 @@ namespace {
 			file_size = handle_file(path, file_size, buffer, index);
 		
 		// Output.
+		// FIXME: the serialization part could be made more memory-efficient by outputting the individual indices one at a time instead of first storing them into a vector, and implementing a custom deserialization function that places them into a vector when reading from disk.
 		cereal::PortableBinaryOutputArchive archive(std::cout);
 		archive(index);
 		std::cout << std::flush;
