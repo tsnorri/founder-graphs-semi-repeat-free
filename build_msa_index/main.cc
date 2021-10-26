@@ -42,7 +42,7 @@ namespace {
 	}
 	
 	
-	std::size_t handle_file(std::string const &path, std::size_t const size, sdsl::bit_vector &buffer, fg::msa_index &index)
+	std::size_t handle_file(std::string const &path, std::size_t const size, sdsl::bit_vector &buffer, cereal::PortableBinaryOutputArchive &archive)
 	{
 		std::cerr << "Handling " << path << "…" << std::flush;
 		lb::file_handle handle(lb::open_file_for_reading(path));
@@ -73,14 +73,15 @@ namespace {
 			
 			++i;
 		}
-
-		// Add an entry to the index.
-		auto &seq_idx(index.sequence_indices.emplace_back(buffer));
 		
-		// Prepare rank and select support. (Could be done in background.)
+		// Create a compressed index and prepare rank and select support.
+		fg::aligned_sequence_index seq_idx(buffer);
 		seq_idx.prepare_rank_and_select_support();
-
+		
 		std::cerr << " found " << gap_count << " gap characters.\n";
+		
+		// Archive.
+		archive(seq_idx);
 		
 		return actual_size;
 	}
@@ -91,23 +92,24 @@ namespace {
 		lb::file_istream stream;
 		lb::open_file_for_reading(sequence_list_path, stream);
 		
-		fg::msa_index index;
-		
 		std::vector <std::string> paths;
 		std::string line;
 		std::size_t file_size{SIZE_MAX};
 		while (std::getline(stream, line))
 			paths.push_back(line);
 
-		index.sequence_indices.reserve(paths.size());
+		// Prepare the output archive.
+		cereal::PortableBinaryOutputArchive archive(std::cout);
+		{
+			std::size_t const size(paths.size());
+			archive(cereal::make_size_tag(size));
+		}
+		
+		// Handle the inputs.
 		sdsl::bit_vector buffer;
 		for (auto const &path : paths)
-			file_size = handle_file(path, file_size, buffer, index);
+			file_size = handle_file(path, file_size, buffer, archive);
 		
-		// Output.
-		// FIXME: the serialization part could be made more memory-efficient by outputting the individual indices one at a time instead of first storing them into a vector, and implementing a custom deserialization function that places them into a vector when reading from disk.
-		cereal::PortableBinaryOutputArchive archive(std::cout);
-		archive(index);
 		std::cout << std::flush;
 	}
 }

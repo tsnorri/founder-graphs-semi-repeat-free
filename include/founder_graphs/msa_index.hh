@@ -60,8 +60,9 @@ namespace founder_graphs {
 		
 		index_vector	sequence_indices;
 		
+		// Saving is done in build_msa_index.
 		template <typename t_archive>
-		void serialize(t_archive &archive);
+		void CEREAL_LOAD_FUNCTION_NAME(t_archive &archive);
 	};
 	
 	
@@ -93,9 +94,14 @@ namespace founder_graphs {
 	
 	
 	template <typename t_archive>
-	void msa_index::serialize(t_archive &archive)
+	void msa_index::CEREAL_LOAD_FUNCTION_NAME(t_archive &archive)
 	{
-		archive(CEREAL_NVP(sequence_indices));
+		std::size_t size{};
+		archive(cereal::make_size_tag(size));
+		
+		sequence_indices.resize(size);
+		for (auto &seq_idx : sequence_indices)
+			archive(seq_idx);
 	}
 }
 
