@@ -95,7 +95,7 @@ namespace {
 	}
 	
 	
-	void find_founder_block_boundaries(char const *sequence_list_path, char const *cst_path, char const *msa_index_path)
+	void find_founder_block_boundaries(char const *sequence_list_path, char const *cst_path, char const *msa_index_path, fg::reverse_msa_reader &reader)
 	{
 		// Open the inputs.
 		lb::file_istream sequence_path_stream;
@@ -107,7 +107,6 @@ namespace {
 		read_from_file(cst_path, cst);
 		read_from_file(msa_index_path, msa_index);
 		
-		fg::reverse_msa_reader reader;
 		{
 			std::string line;
 			while (std::getline(sequence_path_stream, line))
@@ -141,120 +140,139 @@ namespace {
 			node_span_vector node_spans(1 + seq_count);
 			std::vector <std::size_t> string_depths(seq_count);
 			std::size_t pos{0};
-			while (reader.fill_buffer())
-			{
-				auto const &buffer(reader.buffer());
-				// Read the characters.
-				for (std::size_t i(0); i < block_size; ++i)
-				{
-					++pos;
-					libbio_assert_lte(pos, aligned_size);
+			while (reader.fill_buffer(
+				[
+					&reader,
+					&pos,
+					seq_count,
+					block_size,
+					aligned_size,
+					&lexicographic_ranges,
+					&cst,
+					&node_spans,
+					&archive,
+					&string_depths,
+					&msa_index
+				](bool const did_fill){
 					
-					for (std::size_t j(0); j < seq_count; ++j)
+					if (!did_fill)
+						return false;
+					
+					auto const &buffer(reader.buffer());
+					// Read the characters.
+					for (std::size_t i(0); i < block_size; ++i)
 					{
-						auto const idx(i * block_size + j);
-						auto const cc(buffer[idx]);
+						++pos;
+						libbio_assert_lte(pos, aligned_size);
 						
-						// Skip gap characters.
-						if ('-' == cc)
-							continue;
-						
-						auto &lex_range(lexicographic_ranges[j]);
-						sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
-						libbio_always_assert_lte(lex_range.lb, lex_range.rb);
-						
-						// Convert to a CST node and store the sequence identifier.
-						auto &span(node_spans[j]);
-						span = node_span(cst.node(lex_range.lb, lex_range.rb), j);
-					}
-					
-					// Sentinel.
-					node_spans[seq_count] = node_span(node_span::sentinel_tag{});
-					
-					// Sort by the left bound.
-					std::sort(node_spans.begin(), node_spans.end(), [](auto const &lhs, auto const &rhs){
-						return lhs.node.i < rhs.node.i;
-					});
-					
-					// Update the cumulative sum.
-					{
-						auto &first_span(node_spans.front());
-						first_span.length_sum = 0;
 						for (std::size_t j(0); j < seq_count; ++j)
 						{
-							auto const next_idx(1 + j);
-							auto &span(node_spans[next_idx]);
-							auto &prev_span(node_spans[j]);
-							span.length_sum = prev_span.length_sum + prev_span.interval_length();
+							auto const idx(i * block_size + j);
+							auto const cc(buffer[idx]);
+							
+							// Skip gap characters.
+							if ('-' == cc)
+								continue;
+							
+							auto &lex_range(lexicographic_ranges[j]);
+							sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
+							libbio_always_assert_lte(lex_range.lb, lex_range.rb);
+							
+							// Convert to a CST node and store the sequence identifier.
+							auto &span(node_spans[j]);
+							span = node_span(cst.node(lex_range.lb, lex_range.rb), j);
 						}
-					}
-					
-					// Check if the current block is semi-repeat-free.
-					libbio_assert(node_spans.back().is_sentinel());
-					if (node_spans.back().length_sum != seq_count)
-					{
-						archive(fg::length_type(fg::LENGTH_MAX));
-						continue;
-					}
-					
-					// At this point the current block or column range [(aligned_size - pos), aligned_size)
-					// is semi-repeat-free. Try to move the right bound as far left as possible.
-					{
-						node_span_cmp cmp;
 						
-						// Fill with placeholder values for extra safety.
-						std::fill(string_depths.begin(), string_depths.end(), SIZE_MAX);
+						// Sentinel.
+						node_spans[seq_count] = node_span(node_span::sentinel_tag{});
 						
-						auto node_it(node_spans.cbegin());
-						while (node_it != node_spans.cend())
+						// Sort by the left bound.
+						std::sort(node_spans.begin(), node_spans.end(), [](auto const &lhs, auto const &rhs){
+							return lhs.node.i < rhs.node.i;
+						});
+						
+						// Update the cumulative sum.
 						{
-							auto &span(*node_it);
-							node_span_vector_range span_equivalence_class(node_spans.end(), node_spans.end());
-							// Find the parent node.
-							auto node(span.node); // Copy.
-							while (true)
+							auto &first_span(node_spans.front());
+							first_span.length_sum = 0;
+							for (std::size_t j(0); j < seq_count; ++j)
 							{
-								node = cst.parent(node);
-								lexicographic_range const rng(cst.lb(node), cst.rb(node));
-								// Check if the length of the lexicographic range increased.
-								auto equal_range(std::equal_range(node_it, node_spans.cend(), rng, cmp));
-								libbio_assert_neq(equal_range.second, node_spans.end()); // second should always point to a valid element b.c. the last element is the sentinel.
-								libbio_assert_lt(equal_range.first, equal_range.second); // The range should always be non-empty b.c. the node itself should be inside it.
-								// Stop if we extended too much.
-								if (equal_range.second->length_sum - equal_range.first->length_sum != rng.interval_length())
-									break;
-								// Otherwise store the new range.
-								span_equivalence_class = equal_range;
+								auto const next_idx(1 + j);
+								auto &span(node_spans[next_idx]);
+								auto &prev_span(node_spans[j]);
+								span.length_sum = prev_span.length_sum + prev_span.interval_length();
 							}
-							
-							auto const string_depth(1 + cst.depth(node));
-							for (auto const &span : ranges::subrange(span_equivalence_class.first, span_equivalence_class.second))
-								string_depths[span.sequence] = string_depth;
-							
-							node_it = span_equivalence_class.second;
 						}
+						
+						// Check if the current block is semi-repeat-free.
+						libbio_assert(node_spans.back().is_sentinel());
+						if (node_spans.back().length_sum != seq_count)
+						{
+							archive(fg::length_type(fg::LENGTH_MAX));
+							continue;
+						}
+						
+						// At this point the current block or column range [(aligned_size - pos), aligned_size)
+						// is semi-repeat-free. Try to move the right bound as far left as possible.
+						{
+							node_span_cmp cmp;
+							
+							// Fill with placeholder values for extra safety.
+							std::fill(string_depths.begin(), string_depths.end(), SIZE_MAX);
+							
+							auto node_it(node_spans.cbegin());
+							while (node_it != node_spans.cend())
+							{
+								auto &span(*node_it);
+								node_span_vector_range span_equivalence_class(node_spans.end(), node_spans.end());
+								// Find the parent node.
+								auto node(span.node); // Copy.
+								while (true)
+								{
+									node = cst.parent(node);
+									lexicographic_range const rng(cst.lb(node), cst.rb(node));
+									// Check if the length of the lexicographic range increased.
+									auto equal_range(std::equal_range(node_it, node_spans.cend(), rng, cmp));
+									libbio_assert_neq(equal_range.second, node_spans.end()); // second should always point to a valid element b.c. the last element is the sentinel.
+									libbio_assert_lt(equal_range.first, equal_range.second); // The range should always be non-empty b.c. the node itself should be inside it.
+									// Stop if we extended too much.
+									if (equal_range.second->length_sum - equal_range.first->length_sum != rng.interval_length())
+										break;
+									// Otherwise store the new range.
+									span_equivalence_class = equal_range;
+								}
+								
+								auto const string_depth(1 + cst.depth(node));
+								for (auto const &span : ranges::subrange(span_equivalence_class.first, span_equivalence_class.second))
+									string_depths[span.sequence] = string_depth;
+								
+								node_it = span_equivalence_class.second;
+							}
+						}
+						
+						// Find the minimum right bound for the block by counting characters.
+						std::size_t const block_lb{aligned_size - pos};
+						std::size_t max_block_rb{0};
+						for (std::size_t j(0); j < seq_count; ++j)
+						{
+							auto const string_depth(string_depths[j]);
+							libbio_assert_neq(string_depth, SIZE_MAX);
+							auto const &seq_idx(msa_index.sequence_indices[j]);
+							auto const non_gap_count_before(seq_idx.rank0_support(block_lb));
+							auto const non_gap_rb(non_gap_count_before + string_depth);
+							auto const block_rb(seq_idx.select0_support(1 + non_gap_rb));
+							libbio_always_assert_lt(block_rb, SIZE_MAX);
+							max_block_rb = std::max(max_block_rb, std::size_t(block_rb));
+						}
+						
+						// Output max_block_rb.
+						// The semi-repeat-free range will be [block_lb, block_rb].
+						archive(fg::length_type(max_block_rb));
 					}
 					
-					// Find the minimum right bound for the block by counting characters.
-					std::size_t const block_lb{aligned_size - pos};
-					std::size_t max_block_rb{0};
-					for (std::size_t j(0); j < seq_count; ++j)
-					{
-						auto const string_depth(string_depths[j]);
-						libbio_assert_neq(string_depth, SIZE_MAX);
-						auto const &seq_idx(msa_index.sequence_indices[j]);
-						auto const non_gap_count_before(seq_idx.rank0_support(block_lb));
-						auto const non_gap_rb(non_gap_count_before + string_depth);
-						auto const block_rb(seq_idx.select0_support(1 + non_gap_rb));
-						libbio_always_assert_lt(block_rb, SIZE_MAX);
-						max_block_rb = std::max(max_block_rb, std::size_t(block_rb));
-					}
-					
-					// Output max_block_rb.
-					// The semi-repeat-free range will be [block_lb, block_rb].
-					archive(fg::length_type(max_block_rb));
+					return true;
 				}
-			}
+			));
 		}
 		
 		std::cout << std::flush;
@@ -275,7 +293,16 @@ int main(int argc, char **argv)
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cin.tie(nullptr);					// We don't require any input from the user.
 	
-	find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg);
+	if (args_info.bgzip_input_flag)
+	{
+		fg::text_reverse_msa_reader reader;
+		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
+	}
+	else
+	{
+		fg::bgzip_reverse_msa_reader reader;
+		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
+	}
 	
 	return EXIT_SUCCESS;
 }
