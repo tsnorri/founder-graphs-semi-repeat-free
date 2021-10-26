@@ -12,6 +12,7 @@ GENGETOPT		?= gengetopt
 MKDIR			?= mkdir
 NINJA			?= ninja
 RAGEL			?= ragel
+GZIP			?= gzip
 TAR				?= tar
 WGET			?= wget
 
