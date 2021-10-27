@@ -1,3 +1,4 @@
+include local.mk
 include common.mk
 
 BUILD_PRODUCTS =	build_cst/build_cst \
@@ -33,3 +34,6 @@ lib/libbio/local.mk: local.mk
 
 lib/libbio/src/libbio.a: lib/libbio/local.mk
 	$(MAKE) -C lib/libbio/src
+
+lib/parallel-divsufsort/build/divsufsort.a:
+	cd lib/parallel-divsufsort && mkdir -p build && cd build && $(CMAKE) -DOPENMP=ON -DCILKP=OFF -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_COMPILER_IS_GNUCXX:INTEGER=1 .. && $(MAKE) libprange divsufsort
