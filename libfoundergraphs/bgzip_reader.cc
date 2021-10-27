@@ -76,7 +76,7 @@ namespace {
 		{
 			// FIXME: consider the semantics; should we always throw  or always return false if the result is unexpected?
 			case -1:
-				throw std::runtime_error(std::strerror(res));
+				throw std::runtime_error(std::strerror(errno));
 				
 			case 0:
 				throw std::runtime_error("EOF reached while checking for end-of-file marker.");
@@ -112,7 +112,7 @@ namespace {
 		switch (res)
 		{
 			case -1:
-				throw std::runtime_error(std::strerror(res));
+				throw std::runtime_error(std::strerror(errno));
 
 			case 0:
 				throw std::runtime_error("EOF reached while checking the uncompressed size of the last compressed block.");
