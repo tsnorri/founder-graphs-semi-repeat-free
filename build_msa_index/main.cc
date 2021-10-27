@@ -4,6 +4,8 @@
  */
 
 
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 #include <cereal/archives/portable_binary.hpp>
 #include <founder_graphs/msa_index.hh>
 #include <iostream>
@@ -42,31 +44,50 @@ namespace {
 	}
 	
 	
-	std::size_t handle_file(std::string const &path, std::size_t const size, sdsl::bit_vector &buffer, cereal::PortableBinaryOutputArchive &archive)
+	std::size_t handle_file(std::string const &path, std::size_t const size, bool const input_is_gzipped, sdsl::bit_vector &buffer, cereal::PortableBinaryOutputArchive &archive)
 	{
 		std::cerr << "Handling " << path << "…" << std::flush;
 		lb::file_handle handle(lb::open_file_for_reading(path));
-
-		// Check the file size.
-		auto const actual_size(check_file_size(handle));
-		if (SIZE_MAX != size)
-			libbio_always_assert_eq(size, actual_size);
-
-		// Clear the buffer.
-		libbio_assert_lt(0, actual_size);
-		buffer.assign(actual_size, 0);
-		libbio_assert_eq(buffer.size(), actual_size);
+		
+		// Clear the gap buffer.
+		if (input_is_gzipped)
+		{
+			if (SIZE_MAX == size)
+				buffer.resize(0);
+			else
+				buffer.assign(size, 0);
+		}
+		else
+		{
+			// Check the file size.
+			auto const actual_size(check_file_size(handle));
+			if (SIZE_MAX != size)
+				libbio_always_assert_eq(size, actual_size);
+			
+			// Clear the buffer.
+			libbio_assert_lt(0, actual_size);
+			buffer.assign(actual_size, 0);
+			libbio_assert_eq(buffer.size(), actual_size);
+		}
 		
 		// Handle the sequence.
 		lb::file_istream stream;
 		open_stream(handle, stream);
+		
+		ios::filtering_istream in;
+		if (input_is_gzipped)
+			in.push(ios::gzip_decompressor());
+		in.push(stream);
+		
 		char ch{};
 		std::size_t i(0);
 		std::size_t gap_count(0);
-		while (stream >> std::noskipws >> ch)
+		while (in >> std::noskipws >> ch)
 		{
 			if ('-' == ch)
 			{
+				if (input_is_gzipped && SIZE_MAX == size)
+					buffer.resize(1 + i, 0);
 				buffer[i] = 1;
 				++gap_count;
 			}
@@ -74,20 +95,25 @@ namespace {
 			++i;
 		}
 		
+		if (input_is_gzipped && SIZE_MAX == size)
+			buffer.resize(i, 0);
+		
+		libbio_always_assert(i == buffer.size());
+		
 		// Create a compressed index and prepare rank and select support.
 		fg::aligned_sequence_index seq_idx(buffer);
 		seq_idx.prepare_rank_and_select_support();
 		
-		std::cerr << " found " << gap_count << " gap characters.\n";
+		std::cerr << " handled " << i << " characters; found " << gap_count << " gap characters.\n";
 		
 		// Archive.
 		archive(seq_idx);
 		
-		return actual_size;
+		return i;
 	}
 	
 	
-	void build_msa_index(char const *sequence_list_path)
+	void build_msa_index(char const *sequence_list_path, bool const input_is_gzipped)
 	{
 		lb::file_istream stream;
 		lb::open_file_for_reading(sequence_list_path, stream);
@@ -108,7 +134,7 @@ namespace {
 		// Handle the inputs.
 		sdsl::bit_vector buffer;
 		for (auto const &path : paths)
-			file_size = handle_file(path, file_size, buffer, archive);
+			file_size = handle_file(path, file_size, input_is_gzipped, buffer, archive);
 		
 		std::cout << std::flush;
 	}
@@ -128,7 +154,7 @@ int main(int argc, char **argv)
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cin.tie(nullptr);					// We don't require any input from the user.
 	
-	build_msa_index(args_info.sequence_list_arg);
+	build_msa_index(args_info.sequence_list_arg, args_info.gzip_input_flag);
 	
 	return EXIT_SUCCESS;
 }

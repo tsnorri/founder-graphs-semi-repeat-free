@@ -46,6 +46,8 @@ namespace founder_graphs {
 		
 		inline void prepare_rank_and_select_support();
 		
+		inline bool operator==(aligned_sequence_index const &other) const;
+		
 		template <typename t_archive>
 		void CEREAL_SAVE_FUNCTION_NAME(t_archive &archive) const;
 		
@@ -63,6 +65,8 @@ namespace founder_graphs {
 		// Saving is done in build_msa_index.
 		template <typename t_archive>
 		void CEREAL_LOAD_FUNCTION_NAME(t_archive &archive);
+		
+		bool operator==(msa_index const &other) const { return sequence_indices == other.sequence_indices; }
 	};
 	
 	
@@ -70,6 +74,12 @@ namespace founder_graphs {
 	{
 		rank0_support = rank0_support_type(&gap_positions);
 		select0_support = select0_support_type(&gap_positions);
+	}
+	
+	
+	bool aligned_sequence_index::operator==(aligned_sequence_index const &other) const
+	{
+		return gap_positions == other.gap_positions && rank0_support == other.rank0_support && select0_support == other.select0_support;
 	}
 	
 	
