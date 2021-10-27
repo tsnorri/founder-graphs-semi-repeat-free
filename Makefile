@@ -5,6 +5,11 @@ BUILD_PRODUCTS =	build_cst/build_cst \
 					build_msa_index/build_msa_index \
 					find_founder_block_boundaries/find_founder_block_boundaries
 
+LIBBIO_DEPENDENCIES = lib/libbio/src/libbio.a
+ifeq ($(shell uname -s),Linux)
+	LIBBIO_DEPENDENCIES += lib/swift-corelibs-libdispatch/build/src/libdispatch.a
+endif
+
 
 all: $(BUILD_PRODUCTS)
 
@@ -17,7 +22,7 @@ clean:
 clean-all: clean
 	$(MAKE) -C lib/libbio clean
 
-libfoundergraphs/libfoundergraphs.a: lib/libbio/src/libbio.a
+libfoundergraphs/libfoundergraphs.a: $(LIBBIO_DEPENDENCIES)
 	$(MAKE) -C libfoundergraphs
 
 build_cst/build_cst: libfoundergraphs/libfoundergraphs.a
@@ -40,3 +45,19 @@ lib/libbio/src/libbio.a: lib/libbio/local.mk
 
 lib/parallel-divsufsort/build/divsufsort.a:
 	cd lib/parallel-divsufsort && mkdir -p build && cd build && $(CMAKE) -DOPENMP=ON -DCILKP=OFF -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_COMPILER_IS_GNUCXX:INTEGER=1 .. && $(MAKE) libprange divsufsort
+
+lib/swift-corelibs-libdispatch/build/src/libdispatch.a:
+	$(RM) -rf lib/swift-corelibs-libdispatch/build && \
+	cd lib/swift-corelibs-libdispatch && \
+	$(MKDIR) build && \
+	cd build && \
+	$(CMAKE) \
+		-G Ninja \
+		-DCMAKE_C_COMPILER="$(CC)" \
+		-DCMAKE_CXX_COMPILER="$(CXX)" \
+		-DCMAKE_C_FLAGS="$(LIBDISPATCH_CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="$(LIBDISPATCH_CXXFLAGS)" \
+		-DBUILD_SHARED_LIBS=OFF \
+		.. && \
+	$(NINJA) -v
+

@@ -39,7 +39,7 @@ LIBBSD_LIB		?= /usr/lib/x86_64-linux-gnu/libbsd.a
 
 ifeq ($(shell uname -s),Linux)
 	CPPFLAGS	+= -I../lib/swift-corelibs-libdispatch
-	#LDFLAGS		+= ../lib/swift-corelibs-libdispatch/build/src/libdispatch.a ../lib/swift-corelibs-libdispatch/build/src/BlocksRuntime/libBlocksRuntime.a $(LIBBSD_LIB) -lpthread -lz
+	LDFLAGS		+= ../lib/swift-corelibs-libdispatch/build/src/libdispatch.a ../lib/swift-corelibs-libdispatch/build/src/BlocksRuntime/libBlocksRuntime.a $(LIBBSD_LIB) -lpthread -lz
 	LDFLAGS		+= $(LIBBSD_LIB)
 endif
 
