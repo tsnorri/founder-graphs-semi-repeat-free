@@ -26,6 +26,9 @@ build_cst/build_cst: libfoundergraphs/libfoundergraphs.a
 build_msa_index/build_msa_index: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C build_msa_index
 
+build_sa/build_sa: lib/parallel-divsufsort/build/divsufsort.a
+	$(MAKE) -C build_sa
+
 find_founder_block_boundaries/find_founder_block_boundaries: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C find_founder_block_boundaries
 

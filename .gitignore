@@ -6,6 +6,10 @@ build_msa_index/build_msa_index
 build_msa_index/cmdline.c
 build_msa_index/cmdline.h
 build_msa_index/config.h
+build_sa/build_sa
+build_sa/cmdline.c
+build_sa/cmdline.h
+build_sa/config.h
 find_founder_block_boundaries/cmdline.c
 find_founder_block_boundaries/cmdline.h
 find_founder_block_boundaries/config.h
