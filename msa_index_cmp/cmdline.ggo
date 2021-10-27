@@ -1,0 +1,9 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"msa-index-cmp"
+purpose		"Compare two MSA indices"
+usage		"msa_index_cmp --lhs=index1.dat --rhs=index2.dat"
+
+option		"lhs"	-	"Index path"	string	typestr = "filename"	required
+option		"rhs"	-	"Index path"	string	typestr = "filename"	required
