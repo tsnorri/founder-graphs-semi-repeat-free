@@ -20,6 +20,10 @@ find_founder_block_boundaries/find_founder_block_boundaries
 *.o
 *.obj
 
+# Coverage
+*.gcda
+*.gcno
+
 # Precompiled Headers
 *.gch
 *.pch
