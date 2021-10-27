@@ -7,3 +7,6 @@
 [submodule "lib/cereal"]
 	path = lib/cereal
 	url = https://github.com/USCiLab/cereal.git
+[submodule "lib/parallel-divsufsort"]
+	path = lib/parallel-divsufsort
+	url = https://github.com/jlabeit/parallel-divsufsort.git
