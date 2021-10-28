@@ -295,12 +295,12 @@ int main(int argc, char **argv)
 	
 	if (args_info.bgzip_input_flag)
 	{
-		fg::text_reverse_msa_reader reader;
+		fg::bgzip_reverse_msa_reader reader;
 		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
 	}
 	else
 	{
-		fg::bgzip_reverse_msa_reader reader;
+		fg::text_reverse_msa_reader reader;
 		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
 	}
 	

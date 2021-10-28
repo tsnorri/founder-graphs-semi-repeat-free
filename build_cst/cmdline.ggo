@@ -7,3 +7,7 @@ usage		"build_cst --input=input.txt > input.cst"
 description	"Builds a suffix tree for generating an index based on a founder graph. The inputs are the concatenated unaligned sequences."
 
 option		"input"		i	"Input file path"			string		typestr = "filename"					required
+option		"text"		-	"Text file path"			string		typestr = "filename"					optional
+option		"sa"		-	"Suffix array path"			string		typestr = "filename"					optional
+option		"bwt"		-	"BWT path"					string		typestr = "filename"					optional
+option		"csa"		-	"CSA path"					string		typestr = "filename"					optional
