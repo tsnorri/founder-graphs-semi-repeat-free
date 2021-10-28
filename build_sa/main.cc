@@ -35,6 +35,7 @@ namespace {
 		auto const new_width(sdsl::bits::hi(file_size) + 1);
 		if (new_width < t_int_width)
 		{
+			std::cerr << "Resizing…\n";
 			for (std::size_t i(0); i < file_size; ++i)
 				sa.set_int(i * new_width, sa.get_int(i << t_shift_amt, t_int_width), new_width);
 			
@@ -100,13 +101,15 @@ namespace {
 		libbio_always_assert_neq(-1, handle.get());
 		
 		// Read the file into memory.
+		std::cerr << "Reading the input…\n";
 		auto const [file_size, preferred_block_size] = fg::check_file_size(handle);
 		input_vector input(file_size, 0);
 		read_file(handle, input, preferred_block_size);
 		
 		// divsufsort puts everything in the global namespace.
+		std::cerr << "Building the suffix array…\n";
 		sdsl::int_vector <0> sa;
-		if (0xffffffffU < file_size)
+		if (file_size <= 0xffffffffU)
 		{
 			sa.width(32);
 			sa.resize(file_size);
@@ -125,7 +128,8 @@ namespace {
 			
 			resize_if_needed <64, 6>(sa, file_size);
 		}
-		
+
+		std::cerr << "Serializing…\n";
 		sa.serialize(std::cout);
 		std::cout << std::flush;
 	}
