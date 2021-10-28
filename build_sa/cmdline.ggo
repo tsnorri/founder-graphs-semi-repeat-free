@@ -3,7 +3,7 @@
 
 package		"build-sa"
 purpose		"Generate the suffix array of the input text in SDSL-compatible format using Parallel-DivSufSort"
-usage		"build_sa --input=filename.txt"
+usage		"build_sa --input=input.txt > input.sa"
 description	"The data structure is written to stdout."
 
 option		"input"		i	"Input file path"							string		typestr = "filename"					required

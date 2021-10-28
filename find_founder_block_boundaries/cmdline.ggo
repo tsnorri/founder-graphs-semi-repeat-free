@@ -3,7 +3,7 @@
 
 package		"find-founder-block-boundaries"
 purpose		"Find founder block boundaries from an input MSA"
-usage		"find_founder_block_boundaries --sequence-list=input-list.txt --cst=cst.dat --msa-index=msa-index.dat"
+usage		"find_founder_block_boundaries --sequence-list=input-list.txt --cst=cst.dat --msa-index=msa-index.dat > segmentation.dat"
 description	"Determines semi-repeat-free founder block boundaries from the input MSA."
 
 option		"sequence-list"	-	"Input sequence list path"			string		typestr = "filename"		required
