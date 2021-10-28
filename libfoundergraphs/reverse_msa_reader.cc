@@ -135,7 +135,7 @@ namespace founder_graphs {
 		
 		// Fill the buffers and decompress.
 		{
-			auto const queue(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0));
+			auto const queue(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));
 			for (std::size_t i(0); i < m_handles.size(); ++i)
 			{
 				auto &handle(m_handles[i]);
