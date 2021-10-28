@@ -8,6 +8,7 @@
 #include <boost/iostreams/filter/gzip.hpp>
 #include <cereal/archives/portable_binary.hpp>
 #include <founder_graphs/msa_index.hh>
+#include <founder_graphs/utility.hh>
 #include <iostream>
 #include <libbio/assert.hh>
 #include <libbio/file_handle.hh>
@@ -20,21 +21,6 @@ namespace ios	= boost::iostreams;
 
 
 namespace {
-	
-	std::size_t check_file_size(lb::file_handle const &handle)
-	{
-		auto const fd(handle.get());
-		struct stat sb{};
-		
-		if (-1 == fstat(fd, &sb))
-			throw std::runtime_error(strerror(errno));
-		
-		if (sb.st_size < 0)
-			return 0;
-		
-		return sb.st_size;
-	}
-	
 	
 	void open_stream(lb::file_handle const &handle, lb::file_istream &stream)
 	{
@@ -60,7 +46,7 @@ namespace {
 		else
 		{
 			// Check the file size.
-			auto const actual_size(check_file_size(handle));
+			auto const [actual_size, preferred_block_size] = fg::check_file_size(handle);
 			if (SIZE_MAX != size)
 				libbio_always_assert_eq(size, actual_size);
 			
