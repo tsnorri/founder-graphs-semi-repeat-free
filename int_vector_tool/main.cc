@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 
 	if (args_info.read_given)
 	{
-		std::size_t size{};
+		sdsl::int_vector_size_type size{};
 		std::uint8_t width{};
 		auto const res(sdsl::int_vector <0>::read_header(size, width, std::cin));
 
