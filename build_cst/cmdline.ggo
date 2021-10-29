@@ -11,3 +11,4 @@ option		"text"		-	"Text file path"			string		typestr = "filename"					optional
 option		"sa"		-	"Suffix array path"			string		typestr = "filename"					optional
 option		"bwt"		-	"BWT path"					string		typestr = "filename"					optional
 option		"csa"		-	"CSA path"					string		typestr = "filename"					optional
+option		"output"	o	"Output path"				string		typestr = "filename"					optional

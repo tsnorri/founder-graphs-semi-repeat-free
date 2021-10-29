@@ -7,7 +7,10 @@
 #include <cereal/archives/portable_binary.hpp>
 #include <founder_graphs/cst.hh>
 #include <iostream>
+#include <libbio/file_handling.hh>
 #include "cmdline.h"
+
+namespace lb = libbio;
 
 
 namespace {
@@ -17,7 +20,8 @@ namespace {
 		char const *text_path,
 		char const *sa_path,
 		char const *bwt_path,
-		char const *csa_path
+		char const *csa_path,
+		cereal::PortableBinaryOutputArchive &archive
 	)
 	{
 		sdsl::cache_config config(false); // Do not remove temporary files automatically.
@@ -32,11 +36,23 @@ namespace {
 
 		founder_graphs::cst_type cst;
 		sdsl::construct(cst, input_path, config, 1);
-		
-		// Output.
-		cereal::PortableBinaryOutputArchive archive(std::cout);
 		archive(cst);
-		std::cout << std::flush;
+	}
+
+
+	void write_cst(
+		gengetopt_args_info const &args_info,
+		cereal::PortableBinaryOutputArchive &archive
+	)
+	{
+		build_cst(
+			args_info.input_arg,
+			args_info.text_arg,
+			args_info.sa_arg,
+			args_info.bwt_arg,
+			args_info.csa_arg,
+			archive
+		);
 	}
 }
 
@@ -53,14 +69,19 @@ int main(int argc, char **argv)
 	
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cin.tie(nullptr);					// We don't require any input from the user.
-	
-	build_cst(
-		args_info.input_arg,
-		args_info.text_arg,
-		args_info.sa_arg,
-		args_info.bwt_arg,
-		args_info.csa_arg
-	);
+
+	if (args_info.output_arg)
+	{
+		lb::file_ostream stream;
+		lb::open_file_for_writing(args_info.output_arg, stream, lb::writing_open_mode::CREATE);
+		cereal::PortableBinaryOutputArchive archive(stream);
+		write_cst(args_info, archive);
+	}
+	else
+	{
+		cereal::PortableBinaryOutputArchive archive(std::cout);
+		write_cst(args_info, archive);
+	}
 	
 	return EXIT_SUCCESS;
 }
