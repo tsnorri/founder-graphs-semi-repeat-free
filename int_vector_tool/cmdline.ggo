@@ -1,0 +1,14 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"int_vector_tool"
+purpose		"Tool for handling SDSL’s serialized integer vectors"
+usage		"int_vector_tool -R < input.sdsl"
+
+defmode "Read"	modedesc = "Read a stored integer vector"
+modeoption	"read"		R	"Read a stored integer vector and output its header."	mode = "Read"	required
+
+defmode "Write"	modedesc = "Output an integer vector header"
+modeoption	"write"		W	"Output an integer vector header"						mode = "Write"	required
+modeoption	"length"	l	"Vector length in bits"				longlong			mode = "Write"	required
+modeoption	"width"		w	"Vector element width"				short				mode = "Write"	required
