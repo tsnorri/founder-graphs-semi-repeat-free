@@ -121,7 +121,6 @@ namespace {
 			// Prepare the reader.
 			reader.prepare();
 			auto const seq_count(reader.handle_count());
-			auto const block_size(reader.block_size());
 			auto const aligned_size(reader.aligned_size());
 			
 			// Output the aligned size.
@@ -145,7 +144,6 @@ namespace {
 					&reader,
 					&pos,
 					seq_count,
-					block_size,
 					aligned_size,
 					&lexicographic_ranges,
 					&cst,
@@ -159,6 +157,7 @@ namespace {
 						return false;
 					
 					auto const &buffer(reader.buffer());
+					auto const block_size(reader.block_size());
 					// Read the characters.
 					for (std::size_t i(0); i < block_size; ++i)
 					{
@@ -167,7 +166,7 @@ namespace {
 						
 						for (std::size_t j(0); j < seq_count; ++j)
 						{
-							auto const idx(i * block_size + j);
+							auto const idx((j + 1) * block_size - i - 1);
 							auto const cc(buffer[idx]);
 							
 							// Skip gap characters.
@@ -186,21 +185,39 @@ namespace {
 						// Sentinel.
 						node_spans[seq_count] = node_span(node_span::sentinel_tag{});
 						
-						// Sort by the left bound.
+						// Sort by the left bound and the in reverse by the right bound.
+						// Since the nodes represent lexicographic ranges, they can overlap only by being nested.
 						std::sort(node_spans.begin(), node_spans.end(), [](auto const &lhs, auto const &rhs){
-							return lhs.node.i < rhs.node.i;
+							if (lhs.node.i < rhs.node.i)
+								return true;
+							else if (lhs.node.i > rhs.node.i)
+								return false;
+							else // ==
+								return lhs.node.j > rhs.node.j;
 						});
 						
 						// Update the cumulative sum.
+						// Ignore nested intervals but store copies of the previous value.
 						{
 							auto &first_span(node_spans.front());
 							first_span.length_sum = 0;
-							for (std::size_t j(0); j < seq_count; ++j)
+							std::size_t j(0);
+							while (j < seq_count)
 							{
-								auto const next_idx(1 + j);
-								auto &span(node_spans[next_idx]);
-								auto &prev_span(node_spans[j]);
-								span.length_sum = prev_span.length_sum + prev_span.interval_length();
+								auto const &span(node_spans[j]);
+								std::size_t k(1 + j);
+								while (k < node_spans.size()) // Consider the sentinel, too.
+								{
+									auto &next_span(node_spans[k]);
+									if (span.node.j < next_span.node.i)
+									{
+										next_span.length_sum = span.length_sum + span.interval_length();
+										break;
+									}
+									next_span.length_sum = span.length_sum;
+									++k;
+								}
+								j = k;
 							}
 						}
 						
@@ -221,15 +238,16 @@ namespace {
 							std::fill(string_depths.begin(), string_depths.end(), SIZE_MAX);
 							
 							auto node_it(node_spans.cbegin());
-							while (node_it != node_spans.cend())
+							auto const node_end(node_spans.cend() - 1); // Don’t handle the sentinel.
+							while (node_it != node_end)
 							{
 								auto &span(*node_it);
-								node_span_vector_range span_equivalence_class(node_spans.end(), node_spans.end());
-								// Find the parent node.
+								node_span_vector_range span_equivalence_class(node_spans.cend(), node_spans.cend());
 								auto node(span.node); // Copy.
+								// On the first round, determine the initial equivalence class.
+								// Then proceed to the ancestor nodes.
 								while (true)
 								{
-									node = cst.parent(node);
 									lexicographic_range const rng(cst.lb(node), cst.rb(node));
 									// Check if the length of the lexicographic range increased.
 									auto equal_range(std::equal_range(node_it, node_spans.cend(), rng, cmp));
@@ -240,8 +258,14 @@ namespace {
 										break;
 									// Otherwise store the new range.
 									span_equivalence_class = equal_range;
+									// Continue from the parent node.
+									node = cst.parent(node);
 								}
 								
+								// cst.parent() should be called at least once b.c. the initial range is semi-repeat-free.
+								libbio_assert_neq(span.node, node);
+								
+								// Determine the string depth.
 								auto const string_depth(1 + cst.depth(node));
 								for (auto const &span : ranges::subrange(span_equivalence_class.first, span_equivalence_class.second))
 									string_depths[span.sequence] = string_depth;
