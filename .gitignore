@@ -14,6 +14,10 @@ find_founder_block_boundaries/cmdline.c
 find_founder_block_boundaries/cmdline.h
 find_founder_block_boundaries/config.h
 find_founder_block_boundaries/find_founder_block_boundaries
+int_vector_tool/cmdline.c
+int_vector_tool/cmdline.h
+int_vector_tool/config.h
+int_vector_tool/int_vector_tool
 msa_index_cmp/cmdline.c
 msa_index_cmp/cmdline.h
 msa_index_cmp/config.h
