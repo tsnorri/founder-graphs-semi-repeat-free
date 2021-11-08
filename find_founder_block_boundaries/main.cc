@@ -209,8 +209,18 @@ namespace {
 							// Skip gap characters.
 							if ('-' != cc)
 							{
-								sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
-								libbio_always_assert_lte(lex_range.lb, lex_range.rb);
+								try
+								{
+									sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
+									libbio_always_assert_lte(lex_range.lb, lex_range.rb);
+								}
+								catch (lb::assertion_failure_exception const &exc)
+								{
+									std::cerr << "Sequence: " << j << '\n';
+									std::cerr << "Position: " << (aligned_size - pos) << '\n';
+									std::cerr << "Character: '" << cc << "' (" << std::hex << int(cc) << ")\n";
+									throw exc;
+								}
 							}
 							
 							// Convert to a CST node and store the sequence identifier.
