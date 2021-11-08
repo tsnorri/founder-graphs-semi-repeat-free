@@ -47,7 +47,7 @@ find_founder_block_boundaries/find_founder_block_boundaries: libfoundergraphs/li
 founder_block_tool/founder_block_tool: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C founder_block_tool
 
-int_vector_tool/int_vector_tool:
+int_vector_tool/int_vector_tool: $(LIBBIO_DEPENDENCIES)
 	$(MAKE) -C int_vector_tool
 
 msa_index_cmp/msa_index_cmp: libfoundergraphs/libfoundergraphs.a
