@@ -1,0 +1,12 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"founder_block_tool"
+purpose		"Tool for handling output from find_founder_block_boundaries"
+usage		"founder_block_tool -R|-S < boundaries.dat"
+
+defmode "Read"			modedesc = "Read a stored segmentation"
+modeoption	"read"			R	"Read a stored segmentation and output as tabulated text."	mode = "Read"		required
+
+defmode "Statistics"	modedesc = "Calculate statistics from the segmentation"
+modeoption	"statistics"	S	"Calculate statistics from the given segmentation."			mode = "Statistics"	required
