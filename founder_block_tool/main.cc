@@ -85,6 +85,9 @@ int main(int argc, char **argv)
 			std::uint64_t count_sum{};
 			for (auto const &kv : histogram)
 			{
+				if (fg::LENGTH_MAX == kv.first)
+					continue;
+
 				length_sum += kv.second * kv.first;
 				count_sum += kv.second;
 			}
