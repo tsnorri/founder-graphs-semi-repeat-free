@@ -14,6 +14,16 @@ namespace lb = libbio;
 
 
 namespace {
+
+	void register_file_if_needed(sdsl::cache_config &config, char const *path, char const *key, char const *message)
+	{
+		if (path)
+		{
+			std::cerr << message << " path: " << path << '\n';
+			config.file_map[key] = path;
+		}
+	}
+
 	
 	void build_cst(
 		char const *input_path,
@@ -26,31 +36,11 @@ namespace {
 	)
 	{
 		sdsl::cache_config config(false); // Do not remove temporary files automatically.
-		if (text_path)
-		{
-			std::cerr << "Text path: " << text_path << '\n';
-			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
-		}
-		if (sa_path)
-		{
-			std::cerr << "Suffix array path: " << sa_path << '\n';
-			config.file_map[sdsl::conf::KEY_SA] = sa_path;
-		}
-		if (bwt_path)
-		{
-			std::cerr << "BWT path: " << bwt_path << '\n';
-			config.file_map[sdsl::conf::KEY_BWT] = bwt_path;
-		}
-		if (lcp_path)
-		{
-			std::cerr << "LCP path: " << lcp_path << '\n';
-			config.file_map[sdsl::conf::KEY_LCP] = lcp_path;
-		}
-		if (csa_path)
-		{
-			std::cerr << "CSA path: " << csa_path << '\n';
-			config.file_map[sdsl::conf::KEY_CSA] = csa_path;
-		}
+		register_file_if_needed(config, text_path, sdsl::conf::KEY_TEXT, "Text path");
+		register_file_if_needed(config, sa_path, sdsl::conf::KEY_SA, "Suffix array");
+		register_file_if_needed(config, bwt_path, sdsl::conf::KEY_BWT, "BWT");
+		register_file_if_needed(config, lcp_path, sdsl::conf::KEY_LCP, "LCP");
+		register_file_if_needed(config, csa_path, sdsl::conf::KEY_CSA, "CSA");
 
 		founder_graphs::cst_type cst;
 		sdsl::construct(cst, input_path, config, 1);
