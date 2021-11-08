@@ -12,6 +12,7 @@
 #include <iostream>
 #include <libbio/assert.hh>
 #include <libbio/file_handling.hh>
+#include <libbio/utility.hh>
 #include <range/v3/view/subrange.hpp>
 #include <set>
 #include <vector>
@@ -65,13 +66,22 @@ namespace {
 		// that of node does not check for a non-empty interval.
 		static_assert(std::is_unsigned_v <fg::cst_interval_endpoint_type>);
 		explicit node_span(sentinel_tag const &):
-			node(fg::CST_INTERVAL_ENDPOINT_MAX, fg::CST_INTERVAL_ENDPOINT_MAX - 1)
+			node(fg::CST_INTERVAL_ENDPOINT_MAX, fg::CST_INTERVAL_ENDPOINT_MAX - 1),
+			sequence(SIZE_MAX)
 		{
 		}
 		
 		std::size_t interval_length() const { return node.j - node.i + 1; }
 		bool is_sentinel() const { return fg::CST_INTERVAL_ENDPOINT_MAX == node.i; }
+		bool encloses(node_span const &other) const { return node.i <= other.node.i && other.node.j <= node.j; }
 	};
+
+
+	std::ostream &operator<<(std::ostream &os, node_span const &span)
+	{
+		os << "Node: [" << span.node.i << ", " << span.node.j << "] length_sum: " << span.length_sum << " seq: " << span.sequence;
+		return os;
+	}
 	
 	
 	struct node_span_cmp
@@ -83,6 +93,24 @@ namespace {
 	
 	typedef std::vector <node_span> node_span_vector;
 	typedef std::pair <node_span_vector::const_iterator, node_span_vector::const_iterator> node_span_vector_range;
+
+
+	// For debugging.
+	bool check_node_spans(node_span_vector const &vec)
+	{
+		bool retval{true};
+		std::set <std::size_t> seen_seq_numbers;
+		for (auto const &span : vec)
+		{
+			auto const res(seen_seq_numbers.insert(span.sequence));
+			if (!res.second)
+			{
+				std::cerr << "Sequence number " << span.sequence << " was already assigned.\n";
+				retval = false;
+			}
+		}
+		return retval;
+	}
 	
 	
 	template <typename t_ds>
@@ -97,6 +125,8 @@ namespace {
 	
 	void find_founder_block_boundaries(char const *sequence_list_path, char const *cst_path, char const *msa_index_path, fg::reverse_msa_reader &reader)
 	{
+		lb::log_time(std::cerr) << "Loading the data structures…\n";
+
 		// Open the inputs.
 		lb::file_istream sequence_path_stream;
 		lb::open_file_for_reading(sequence_list_path, sequence_path_stream);
@@ -139,6 +169,8 @@ namespace {
 			node_span_vector node_spans(1 + seq_count);
 			std::vector <std::size_t> string_depths(seq_count);
 			std::size_t pos{0};
+			std::vector <std::size_t> handled_sequences; // For debugging.
+			lb::log_time(std::cerr) << "Finding founder block boundaries…\n";
 			while (reader.fill_buffer(
 				[
 					&reader,
@@ -150,7 +182,8 @@ namespace {
 					&node_spans,
 					&archive,
 					&string_depths,
-					&msa_index
+					&msa_index,
+					&handled_sequences
 				](bool const did_fill){
 					
 					if (!did_fill)
@@ -163,19 +196,22 @@ namespace {
 					{
 						++pos;
 						libbio_assert_lte(pos, aligned_size);
+
+						if (0 == pos % 10000)
+							lb::log_time(std::cerr) << "Position " << pos << '/' << aligned_size << "…\n";
 						
 						for (std::size_t j(0); j < seq_count; ++j)
 						{
 							auto const idx((j + 1) * block_size - i - 1);
 							auto const cc(buffer[idx]);
+							auto &lex_range(lexicographic_ranges[j]);
 							
 							// Skip gap characters.
-							if ('-' == cc)
-								continue;
-							
-							auto &lex_range(lexicographic_ranges[j]);
-							sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
-							libbio_always_assert_lte(lex_range.lb, lex_range.rb);
+							if ('-' != cc)
+							{
+								sdsl::backward_search(cst.csa, lex_range.lb, lex_range.rb, cc, lex_range.lb, lex_range.rb);
+								libbio_always_assert_lte(lex_range.lb, lex_range.rb);
+							}
 							
 							// Convert to a CST node and store the sequence identifier.
 							auto &span(node_spans[j]);
@@ -184,41 +220,51 @@ namespace {
 						
 						// Sentinel.
 						node_spans[seq_count] = node_span(node_span::sentinel_tag{});
-						
+
 						// Sort by the left bound and the in reverse by the right bound.
 						// Since the nodes represent lexicographic ranges, they can overlap only by being nested.
 						std::sort(node_spans.begin(), node_spans.end(), [](auto const &lhs, auto const &rhs){
-							if (lhs.node.i < rhs.node.i)
-								return true;
-							else if (lhs.node.i > rhs.node.i)
-								return false;
-							else // ==
-								return lhs.node.j > rhs.node.j;
+							return std::make_tuple(lhs.node.i, lhs.node.j) < std::make_tuple(rhs.node.i, rhs.node.j);
 						});
-						
+
 						// Update the cumulative sum.
-						// Ignore nested intervals but store copies of the previous value.
+						// Ignore nested intervals.
 						{
 							auto &first_span(node_spans.front());
 							first_span.length_sum = 0;
-							std::size_t j(0);
-							while (j < seq_count)
+							auto const count(node_spans.size()); // Consider the sentinel, too.
+							if (1 < count)
 							{
-								auto const &span(node_spans[j]);
-								std::size_t k(1 + j);
-								while (k < node_spans.size()) // Consider the sentinel, too.
+								// If count == 2, second_span is the sentinel.
+								auto &second_span(node_spans[1]);
+								second_span.length_sum = first_span.length_sum + first_span.interval_length();
+								for (std::size_t j(2); j < count; ++j)
 								{
-									auto &next_span(node_spans[k]);
-									if (span.node.j < next_span.node.i)
-									{
-										next_span.length_sum = span.length_sum + span.interval_length();
-										break;
-									}
-									next_span.length_sum = span.length_sum;
-									++k;
+									// Don’t consider the interval of the current span, just those of the two previous ones.
+									auto &span(node_spans[j]);
+									auto const &prev1(node_spans[j - 1]);
+									auto const &prev2(node_spans[j - 2]);
+									if (prev1.encloses(prev2)) // Safe b.c. of the comparison operator used when sorting.
+										span.length_sum = prev1.length_sum + prev1.interval_length() - prev2.interval_length();
+									else
+										span.length_sum = prev1.length_sum + prev1.interval_length();
 								}
-								j = k;
 							}
+						}
+
+						// Make sure the altorighm for updating the cumulative sum is correct.
+						try
+						{
+							libbio_assert(std::is_sorted(node_spans.begin(), node_spans.end(), [](auto const &lhs, auto const &rhs){
+								return lhs.length_sum < rhs.length_sum;
+							}));
+						}
+						catch (lb::assertion_failure_exception const &exc)
+						{
+							std::cerr << "Node spans:\n";
+							for (auto const &span : node_spans)
+								std::cerr << span << '\n';
+							throw exc;
 						}
 						
 						// Check if the current block is semi-repeat-free.
@@ -239,6 +285,7 @@ namespace {
 							
 							auto node_it(node_spans.cbegin());
 							auto const node_end(node_spans.cend() - 1); // Don’t handle the sentinel.
+							handled_sequences.clear();
 							while (node_it != node_end)
 							{
 								auto &span(*node_it);
@@ -267,26 +314,72 @@ namespace {
 								
 								// Determine the string depth.
 								auto const string_depth(1 + cst.depth(node));
+								libbio_assert_lt(0, string_depth);
 								for (auto const &span : ranges::subrange(span_equivalence_class.first, span_equivalence_class.second))
+								{
 									string_depths[span.sequence] = string_depth;
+#ifndef NDEBUG
+									handled_sequences.push_back(span.sequence);
+#endif
+								}
 								
 								node_it = span_equivalence_class.second;
 							}
 						}
-						
+
 						// Find the minimum right bound for the block by counting characters.
 						std::size_t const block_lb{aligned_size - pos};
 						std::size_t max_block_rb{0};
 						for (std::size_t j(0); j < seq_count; ++j)
 						{
-							auto const string_depth(string_depths[j]);
-							libbio_assert_neq(string_depth, SIZE_MAX);
-							auto const &seq_idx(msa_index.sequence_indices[j]);
-							auto const non_gap_count_before(seq_idx.rank0_support(block_lb));
-							auto const non_gap_rb(non_gap_count_before + string_depth);
-							auto const block_rb(seq_idx.select0_support(1 + non_gap_rb));
-							libbio_always_assert_lt(block_rb, SIZE_MAX);
-							max_block_rb = std::max(max_block_rb, std::size_t(block_rb));
+							try
+							{
+								auto const string_depth(string_depths[j]);
+								libbio_assert_neq(string_depth, SIZE_MAX);
+								auto const &seq_idx(msa_index.sequence_indices[j]);
+								auto const non_gap_count_before(seq_idx.rank0_support(block_lb));
+								auto const non_gap_rb(non_gap_count_before + string_depth);
+								auto const block_rb(seq_idx.select0_support(1 + non_gap_rb));
+								libbio_always_assert_lt(block_rb, SIZE_MAX);
+								max_block_rb = std::max(max_block_rb, std::size_t(block_rb));
+							}
+							catch (lb::assertion_failure_exception const &exc)
+							{
+								std::cerr << "String depth for sequence " << j << '/' << seq_count << " was not set.\n";
+
+								std::cerr << "Handled sequences:\n";
+								std::sort(handled_sequences.begin(), handled_sequences.end());
+								for (auto const idx : handled_sequences)
+									std::cerr << idx << '\n';
+
+								std::cerr << "Node spans (" << node_spans.size() << "):\n";
+								for (auto const &span : node_spans)
+									std::cerr << span << '\n';
+
+								auto sorted_node_spans(node_spans);
+								std::sort(sorted_node_spans.begin(), sorted_node_spans.end(), [](auto const &lhs, auto const &rhs){
+									return lhs.sequence < rhs.sequence;
+								});
+								std::cerr << "Sorted node spans (" << sorted_node_spans.size() << "):\n";
+								for (auto const &span : sorted_node_spans)
+									std::cerr << span << '\n';
+								{
+									std::cerr << "Equivalent sequence numbers:\n";
+									std::size_t prev_eq(SIZE_MAX);
+									for (std::size_t k(1); k < sorted_node_spans.size(); ++k)
+									{
+										if (sorted_node_spans[k - 1].sequence == sorted_node_spans[k].sequence)
+										{
+											if (k - 1 != prev_eq)
+												std::cerr << sorted_node_spans[k - 1] << '\n';
+											std::cerr << sorted_node_spans[k] << '\n';
+											prev_eq = k;
+										}
+									}
+								}
+
+								throw exc;
+							}
 						}
 						
 						// Output max_block_rb.
@@ -300,6 +393,7 @@ namespace {
 		}
 		
 		std::cout << std::flush;
+		lb::log_time(std::cerr) << "Done.\n";
 	}
 }
 
