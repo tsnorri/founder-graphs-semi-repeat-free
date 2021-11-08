@@ -20,19 +20,37 @@ namespace {
 		char const *text_path,
 		char const *sa_path,
 		char const *bwt_path,
+		char const *lcp_path,
 		char const *csa_path,
 		cereal::PortableBinaryOutputArchive &archive
 	)
 	{
 		sdsl::cache_config config(false); // Do not remove temporary files automatically.
 		if (text_path)
+		{
+			std::cerr << "Text path: " << text_path << '\n';
 			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
+		}
 		if (sa_path)
+		{
+			std::cerr << "Suffix array path: " << sa_path << '\n';
 			config.file_map[sdsl::conf::KEY_SA] = sa_path;
+		}
 		if (bwt_path)
+		{
+			std::cerr << "BWT path: " << bwt_path << '\n';
 			config.file_map[sdsl::conf::KEY_BWT] = bwt_path;
+		}
+		if (lcp_path)
+		{
+			std::cerr << "LCP path: " << lcp_path << '\n';
+			config.file_map[sdsl::conf::KEY_LCP] = lcp_path;
+		}
 		if (csa_path)
+		{
+			std::cerr << "CSA path: " << csa_path << '\n';
 			config.file_map[sdsl::conf::KEY_CSA] = csa_path;
+		}
 
 		founder_graphs::cst_type cst;
 		sdsl::construct(cst, input_path, config, 1);
@@ -50,6 +68,7 @@ namespace {
 			args_info.text_arg,
 			args_info.sa_arg,
 			args_info.bwt_arg,
+			args_info.lcp_arg,
 			args_info.csa_arg,
 			archive
 		);
