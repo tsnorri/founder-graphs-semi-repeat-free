@@ -3,7 +3,10 @@ include common.mk
 
 BUILD_PRODUCTS =	build_cst/build_cst \
 					build_msa_index/build_msa_index \
-					find_founder_block_boundaries/find_founder_block_boundaries
+					find_founder_block_boundaries/find_founder_block_boundaries \
+					founder_block_tool/founder_block_tool \
+					int_vector_tool/int_vector_tool \
+					msa_index_cmp/msa_index_cmp
 
 LIBBIO_DEPENDENCIES = lib/libbio/src/libbio.a
 ifeq ($(shell uname -s),Linux)
@@ -16,8 +19,12 @@ all: $(BUILD_PRODUCTS)
 clean:
 	$(MAKE) -C libfoundergraphs clean
 	$(MAKE) -C build_cst clean
+	$(MAKE) -C build_sa clean
 	$(MAKE) -C build_msa_index clean
 	$(MAKE) -C find_founder_block_boundaries clean
+	$(MAKE) -C founder_block_tool clean
+	$(MAKE) -C int_vector_tool clean
+	$(MAKE) -C msa_index_cmp clean
 
 clean-all: clean
 	$(MAKE) -C lib/libbio clean
@@ -36,6 +43,15 @@ build_sa/build_sa: lib/parallel-divsufsort/build/divsufsort.a
 
 find_founder_block_boundaries/find_founder_block_boundaries: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C find_founder_block_boundaries
+
+founder_block_tool/founder_block_tool: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C founder_block_tool
+
+int_vector_tool/int_vector_tool:
+	$(MAKE) -C int_vector_tool
+
+msa_index_cmp/msa_index_cmp: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C msa_index_cmp
 
 lib/libbio/local.mk: local.mk
 	$(CP) local.mk lib/libbio
