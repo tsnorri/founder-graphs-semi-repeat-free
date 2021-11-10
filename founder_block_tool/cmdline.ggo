@@ -5,8 +5,11 @@ package		"founder_block_tool"
 purpose		"Tool for handling output from find_founder_block_boundaries"
 usage		"founder_block_tool -R|-S < boundaries.dat"
 
-defmode "Read"			modedesc = "Read a stored segmentation"
-modeoption	"read"			R	"Read a stored segmentation and output as tabulated text."	mode = "Read"		required
+defmode "Read"					modedesc = "Read a stored segmentation"
+modeoption	"read"					R	"Read a stored segmentation and output as tabulated text."	mode = "Read"					required
 
-defmode "Statistics"	modedesc = "Calculate statistics from the segmentation"
-modeoption	"statistics"	S	"Calculate statistics from the given segmentation."			mode = "Statistics"	required
+defmode "Length histogram"		modedesc = "Output the counts of lengths"
+modeoption	"length-histogram"		L	"Output the counts of lengths"								mode = "Length histogram"		required
+
+defmode "Right bound histogram"	modedesc = "Output the counts of right bounds"
+modeoption	"right-bound-histogram"	B	"Output the counts of right bounds"							mode = "Right bound histogram"	required

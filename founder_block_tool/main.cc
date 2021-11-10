@@ -44,7 +44,21 @@ int main(int argc, char **argv)
 			std::cout << aln_pos << '\t' << rb << '\n';
 		}
 	}
-	else if (args_info.statistics_given)
+	else if (args_info.right_bound_histogram_given)
+	{
+		std::map <fg::length_type, fg::length_type> histogram;
+		for (std::size_t i(0); i < aligned_size; ++i)
+		{
+			fg::length_type rb{};
+			archive(rb);
+			++histogram[rb];
+		}
+
+		std::cout << "RB\tCOUNT\n";
+		for (auto const &kv : histogram)
+			std::cout << kv.first << '\t' << kv.second << '\n';
+	}
+	else if (args_info.length_histogram_given)
 	{
 		std::map <fg::length_type, fg::length_type> histogram;
 		fg::length_type length{};
@@ -102,7 +116,7 @@ int main(int argc, char **argv)
 				if (fg::LENGTH_MAX == kv.first)
 					continue;
 
-				if (current_count + kv.second <= count_2)
+				if (count_2 <= current_count + kv.second)
 				{
 					std::cerr << "Median length: " << kv.first << '\n';
 					break;
