@@ -30,13 +30,13 @@ int main(int argc, char **argv)
 	// Read the size of the input.
 	cereal::PortableBinaryInputArchive archive(std::cin);
 
-	std::size_t aligned_size{}; // FIXME: use fg::length_type, also change the typedef to std::uint64_t.
+	fg::length_type aligned_size{};
 	archive(cereal::make_size_tag(aligned_size));
 
 	if (args_info.read_given)
 	{
 		std::cout << "LB\tRB\n";
-		for (std::size_t i(0); i < aligned_size; ++i)
+		for (fg::length_type i(0); i < aligned_size; ++i)
 		{
 			auto const aln_pos(aligned_size - i  - 1);
 			fg::length_type rb{};
@@ -47,7 +47,7 @@ int main(int argc, char **argv)
 	else if (args_info.right_bound_histogram_given)
 	{
 		std::map <fg::length_type, fg::length_type> histogram;
-		for (std::size_t i(0); i < aligned_size; ++i)
+		for (fg::length_type i(0); i < aligned_size; ++i)
 		{
 			fg::length_type rb{};
 			archive(rb);
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 	{
 		std::map <fg::length_type, fg::length_type> histogram;
 		fg::length_type length{};
-		for (std::size_t i(0); i < aligned_size; ++i)
+		for (fg::length_type i(0); i < aligned_size; ++i)
 		{
 			auto const aln_pos(aligned_size - i - 1);
 
