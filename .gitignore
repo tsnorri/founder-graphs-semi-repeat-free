@@ -14,6 +14,10 @@ find_founder_block_boundaries/cmdline.c
 find_founder_block_boundaries/cmdline.h
 find_founder_block_boundaries/config.h
 find_founder_block_boundaries/find_founder_block_boundaries
+founder_block_tool/cmdline.c
+founder_block_tool/cmdline.h
+founder_block_tool/config.h
+founder_block_tool/founder_block_tool
 int_vector_tool/cmdline.c
 int_vector_tool/cmdline.h
 int_vector_tool/config.h
