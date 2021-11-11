@@ -204,6 +204,7 @@ namespace {
 			// Find the min./max. scoring interval.
 			auto it(find_optimum(candidate_intervals));
 			auto &next_interval(*it);
+			libbio_assert_lte(current_interval.location.rb, next_interval.location.lb);
 			current_interval.next = &next_interval;
 			
 			// Update the score and the boundaries.
@@ -238,7 +239,7 @@ namespace {
 		else if (args_info.min_block_length_given)
 		{
 			optimize <false>(stream, [](scored_interval const &current_interval, scored_interval const &next_interval){
-				return std::max(current_interval.length(), next_interval.score);
+				return std::max(next_interval.location.lb - current_interval.location.lb, next_interval.score);
 			});
 		}
 		else
