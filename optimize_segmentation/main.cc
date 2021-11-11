@@ -136,12 +136,11 @@ namespace {
 		// Output the intervals.
 		{
 			scored_interval const *current_interval(&first_interval);
-			while (current_interval->is_valid())
+			do
 			{
 				archive(current_interval->location.lb);
-				archive(current_interval->location.rb);
 				current_interval = current_interval->next;
-			}
+			} while (current_interval->is_valid());
 		}
 	}
 	
@@ -169,9 +168,10 @@ namespace {
 		
 		pending_interval_set pending_intervals;	// Left bounds are distinct.
 		candidate_interval_set candidate_intervals;	// Scores are not distinct.
+		// We actually don’t need the right bounds in candidate_intervals.
 		
-		// Add a sentinel so that we don’t need to check for emptiness.
-		candidate_intervals.emplace(fg::LENGTH_MAX, fg::LENGTH_MAX);
+		// Add a sentinel.
+		candidate_intervals.emplace(aligned_size, fg::LENGTH_MAX);
 		
 		// For finding min. or max. value.
 		find_optimum <t_maximize> find_optimum;
@@ -205,8 +205,9 @@ namespace {
 			auto &next_interval(*it);
 			current_interval.next = &next_interval;
 			
-			// Update the score.
+			// Update the score and the boundaries.
 			current_interval.score = score_fn(current_interval, next_interval);
+			current_interval.location.rb = next_interval.location.lb;
 			
 			// Check if this was the last relevant interval.
 			if (0 == interval.lb)
