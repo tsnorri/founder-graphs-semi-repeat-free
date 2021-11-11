@@ -26,6 +26,10 @@ msa_index_cmp/cmdline.c
 msa_index_cmp/cmdline.h
 msa_index_cmp/config.h
 msa_index_cmp/msa_index_cmp
+optimize_segmentation/cmdline.c
+optimize_segmentation/cmdline.h
+optimize_segmentation/config.h
+optimize_segmentation/optimize_segmentation
 tests/tests
 
 
