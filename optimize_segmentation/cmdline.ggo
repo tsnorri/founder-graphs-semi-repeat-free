@@ -3,7 +3,13 @@
 
 package		"optimize-segmentation"
 purpose		"Optimize the segmentation produced by find_founder_block_boundaries"
-usage		"find_founder_block_boundaries [...] | optimize_segmentation --sequence-list=input-list.txt"
+usage		"find_founder_block_boundaries [...] | optimize_segmentation [...]"
 description	"Uses the MSA to determine equivalent substrings."
 
-option		"sequence-list"	-	"Input sequence list path"	string		typestr = "filename"		required
+option		"segmentation"			s	"Input segmentation"				string	typestr = "filename"				optional
+
+defmode "Maximum number of blocks"	modedesc = "Maximize the number of blocks"
+modeoption	"max-number-of-blocks"	N	"Maximize the number of blocks"				mode = "Maximum number of blocks"	required
+
+defmode "Minimum block length"		modedesc = "Minimize the maximum block length"
+modeoption	"min-block-length"		L	"Minimize the maximum block length"			mode = "Minimum block length"		required
