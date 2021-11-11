@@ -123,6 +123,7 @@ namespace {
 		fg::length_type block_count{};
 		{
 			scored_interval const *current_interval(&first_interval);
+			libbio_assert_eq(0, current_interval->location.lb);
 			while (current_interval->is_valid())
 			{
 				++block_count;
@@ -136,11 +137,11 @@ namespace {
 		// Output the intervals.
 		{
 			scored_interval const *current_interval(&first_interval);
-			do
+			while (current_interval->is_valid())
 			{
-				archive(current_interval->location.lb);
+				archive(current_interval->location.rb);
 				current_interval = current_interval->next;
-			} while (current_interval->is_valid());
+			}
 		}
 	}
 	
