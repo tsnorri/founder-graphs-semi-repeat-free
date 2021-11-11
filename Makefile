@@ -6,7 +6,8 @@ BUILD_PRODUCTS =	build_cst/build_cst \
 					find_founder_block_boundaries/find_founder_block_boundaries \
 					founder_block_tool/founder_block_tool \
 					int_vector_tool/int_vector_tool \
-					msa_index_cmp/msa_index_cmp
+					msa_index_cmp/msa_index_cmp \
+					optimize_segmentation/optimize_segmentation
 
 LIBBIO_DEPENDENCIES = lib/libbio/src/libbio.a
 ifeq ($(shell uname -s),Linux)
@@ -52,6 +53,9 @@ int_vector_tool/int_vector_tool: $(LIBBIO_DEPENDENCIES)
 
 msa_index_cmp/msa_index_cmp: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C msa_index_cmp
+
+optimize_segmentation/optimize_segmentation: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C optimize_segmentation
 
 lib/libbio/local.mk: local.mk
 	$(CP) local.mk lib/libbio
