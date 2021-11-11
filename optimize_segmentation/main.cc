@@ -161,8 +161,10 @@ namespace {
 	template <bool t_maximize, typename t_score_fn>
 	void optimize(std::istream &stream, t_score_fn &&score_fn)
 	{
+		lb::log_time(std::cerr) << "Loading the input segmentation…\n";
 		std::vector <interval> input_segmentation;
 		auto const aligned_size(read_input(stream, input_segmentation));
+		lb::log_time(std::cerr) << "Sorting…\n";
 		std::sort(input_segmentation.begin(), input_segmentation.end(), interval_rb_cmp());
 		
 		pending_interval_set pending_intervals;	// Left bounds are distinct.
@@ -174,8 +176,14 @@ namespace {
 		// For finding min. or max. value.
 		find_optimum <t_maximize> find_optimum;
 		
+		lb::log_time(std::cerr) << "Optimizing…\n";
+		std::size_t count{};
 		for (auto const &interval : rsv::reverse(input_segmentation))
 		{
+			++count;
+			if (0 == count % 10000000)
+				lb::log_time(std::cerr) << "Interval " << count << '/' << input_segmentation.size() << " (at most)…\n";
+
 			// Move from pending intervals s.t. interval.rb <= pending.lb.
 			// node_handles ignore the comparator and the key cardinality of the container,
 			// so they can be moved easily. extract() only handles single nodes, not ranges.
@@ -236,6 +244,7 @@ namespace {
 			std::cerr << "Unknown mode given.\n";
 			std::exit(EXIT_FAILURE);
 		}
+		lb::log_time(std::cerr) << "Done.\n";
 	}
 }
 
