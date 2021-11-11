@@ -12,6 +12,7 @@
 
 namespace founder_graphs {
 	
+	typedef std::uint32_t	count_type;
 	typedef std::uint64_t	length_type;
 	constexpr inline auto LENGTH_MAX{std::numeric_limits <length_type>::max()};
 }
