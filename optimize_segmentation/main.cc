@@ -106,7 +106,10 @@ namespace {
 		{
 			auto const lb(aligned_size - i - 1);
 			fg::length_type rb{};
-			archive(fg::length_type(rb));
+			archive(rb);
+			if (fg::LENGTH_MAX == rb)
+				continue;
+			libbio_assert_lte(lb, rb);
 			dst.emplace_back(lb, rb + 1); // Store half-open intervals.
 		}
 		
