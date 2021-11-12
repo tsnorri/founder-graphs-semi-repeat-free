@@ -86,6 +86,8 @@ namespace {
 				auto const aln_pos(aligned_size - i  - 1);
 				fg::length_type rb{};
 				archive(rb);
+				if (args_info.skip_invalid_given && (fg::LENGTH_MAX == rb))
+					continue;
 				std::cout << aln_pos << '\t' << rb << '\n';
 			}
 		}
@@ -153,6 +155,8 @@ namespace {
 			{
 				fg::length_type rb{};
 				archive(rb);
+				if (args_info.skip_invalid_given && (fg::LENGTH_MAX == rb))
+					continue;
 				std::cout << lb << '\t' << rb << '\n';
 				lb = rb;
 			}
