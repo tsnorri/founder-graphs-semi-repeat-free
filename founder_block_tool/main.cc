@@ -6,12 +6,15 @@
 #include <cereal/archives/portable_binary.hpp>
 #include <founder_graphs/basic_types.hh>
 #include <iostream>
+#include <libbio/assert.hh>
+#include <libbio/file_handling.hh>
 #include <map>
 #include <range/v3/view/reverse.hpp>
 #include "cmdline.h"
 
 
 namespace fg	= founder_graphs;
+namespace lb	= libbio;
 namespace rsv	= ranges::views;
 
 
@@ -193,6 +196,67 @@ namespace {
 			std::exit(EXIT_FAILURE);
 		}
 	}
+	
+	
+	void check_segmentation(gengetopt_args_info const &args_info)
+	{
+		// Optimized segmentation.
+		lb::file_istream stream;
+		lb::open_file_for_reading(args_info.check_segmentation_arg, stream);
+		cereal::PortableBinaryInputArchive archive(stream);
+		
+		std::vector <fg::length_type> original_right_bounds;
+		
+		// Read the original segmentation.
+		{
+			lb::file_istream stream;
+			lb::open_file_for_reading(args_info.segmentation_arg, stream);
+			cereal::PortableBinaryInputArchive archive(stream);
+			
+			fg::length_type aligned_size{};
+			archive(cereal::make_size_tag(aligned_size));
+			original_right_bounds.clear();
+			original_right_bounds.resize(aligned_size);
+		
+			for (fg::length_type i(0); i < aligned_size; ++i)
+			{
+				auto const lb(aligned_size - i - 1);
+				fg::length_type rb{};
+				archive(rb);
+				libbio_assert_lte(lb, rb);
+				original_right_bounds[lb] = (fg::LENGTH_MAX == rb ? rb : 1 + rb); // Store half-open intervals.
+			}
+		}
+		
+		// Compare.
+		fg::length_type block_count{};
+		archive(cereal::make_size_tag(block_count));
+		fg::length_type lb{};
+		bool did_succeed{true};
+		for (fg::length_type i(0); i < block_count; ++i)
+		{
+			fg::length_type rb{};
+			archive(rb);
+			
+			libbio_assert_lt(lb, original_right_bounds.size());
+			auto const found_rb(original_right_bounds[lb]);
+			
+			if (fg::LENGTH_MAX == found_rb)
+			{
+				did_succeed = false;
+				std::cerr << "Non-semi-repeat-free block at " << lb << ".\n";
+			}
+			
+			if (rb < found_rb)
+			{
+				did_succeed = false;
+				std::cerr << "Optimized right bound " << rb << " less than original " << found_rb << " at " << lb << ".\n";
+			}
+		}
+		
+		if (!did_succeed)
+			std::exit(EXIT_FAILURE);
+	}
 }
 
 
@@ -208,7 +272,9 @@ int main(int argc, char **argv)
 	
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 
-	if (args_info.optimized_segmentation_given)
+	if (args_info.check_segmentation_given)
+		check_segmentation(args_info);
+	else if (args_info.optimized_segmentation_given)
 		handle_optimized_segmentation(args_info);
 	else
 		handle_first_stage_segmentation(args_info);
