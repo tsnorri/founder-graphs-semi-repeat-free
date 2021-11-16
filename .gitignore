@@ -2,6 +2,10 @@ build_cst/build_cst
 build_cst/cmdline.c
 build_cst/cmdline.h
 build_cst/config.h
+build_founder_graph_index/build_founder_graph_index
+build_founder_graph_index/cmdline.c
+build_founder_graph_index/cmdline.h
+build_founder_graph_index/config.h
 build_msa_index/build_msa_index
 build_msa_index/cmdline.c
 build_msa_index/cmdline.h
