@@ -1,0 +1,14 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"build-founder-graph-index"
+purpose		"Build a founder graph index from optimized segmentation"
+usage		"build_founder_graph_index --input=input.txt > input.cst"
+description	"Generates an indexable text from optimized founder graph segmentation and builds a founder graph index from that."
+
+defmode "Generate indexable text"		modedesc = "Generate the indexable text"
+modeoption	"generate-indexable-text"	G	"Generate the indexable text"									mode = "Generate indexable text"	required
+modeoption	"sequence-list"				s	"Sequence list path"			string	typestr = "filename"	mode = "Generate indexable text"	required
+modeoption	"segmentation"				e	"Optimized segmentation path"	string	typestr = "filename"	mode = "Generate indexable text"	required
+modeoption	"bgzip-input"				z	"Sequences are gzipped"											mode = "Generate indexable text"	optional
+modeoption	"segments-only"				-	"Output segments only"											mode = "Generate indexable text"	optional
