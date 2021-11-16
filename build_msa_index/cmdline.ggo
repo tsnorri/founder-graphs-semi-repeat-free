@@ -6,5 +6,5 @@ purpose		"Build an index from a MSA for preparing a founder graph index"
 usage		"build_msa_index --sequence-list=input-list.txt > msa-index.dat"
 description	"Builds an index for generating another index based on a founder graph."
 
-option		"sequence-list"	-	"Sequence list path"				string		typestr = "filename"			required
-option		"gzip-input"	-	"Input sequences are compressed"	flag										off
+option		"sequence-list"	s	"Sequence list path"				string		typestr = "filename"			required
+option		"gzip-input"	z	"Input sequences are compressed"	flag										off
