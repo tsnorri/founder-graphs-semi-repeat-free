@@ -3,6 +3,7 @@ include ../common.mk
 
 
 OBJECTS =	bgzip_reader.o \
+			msa_reader.o \
 			reverse_msa_reader.o \
 			utility.o
 
