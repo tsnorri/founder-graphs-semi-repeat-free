@@ -27,7 +27,7 @@ namespace {
 	{
 		// User-defined literals can only have certain parameter types; in particular plain int is not allowed.
 		// Start by checking that the passed unsigned long long is small enough.
-		// static_assert cannot be used b.c. val is not constexpr. (Currently no function parameters can be.)
+		// static_assert cannot be used here b.c. val is not constexpr. (Currently no function parameters can be.)
 		do
 		{
 			if ((0xffULL & val) != val)
@@ -39,7 +39,7 @@ namespace {
 		// is not constexpr. To mitigate, we use bit shifts to get
 		// the sign bit to its place, and then bitwise-or the shifted bit back.
 		char retval{char((0xffULL & val) >> 1)};
-		retval <<= 1; // Defined behaviour even for signed char b.c. the sign bit is zero.
+		retval <<= 1; // Defined behaviour even for signed char b.c. the sign bit is zero before the shift.
 		retval |= (val & 0x1);
 		return retval;
 	}
@@ -173,11 +173,11 @@ namespace founder_graphs {
 	}
 	
 	
-	void bgzip_reader::read_current_block()
+	void bgzip_reader::read_blocks(std::size_t const count)
 	{
 		// Read the compressed block.
 		auto const offset(m_index_entries[m_current_block].compressed_offset);
-		auto const next_offset(m_index_entries[1 + m_current_block].compressed_offset);
+		auto const next_offset(m_index_entries[count + m_current_block].compressed_offset);
 		libbio_assert_lt(offset, next_offset);
 		auto const length(next_offset - offset);
 		m_input_buffer.resize(length);
@@ -198,5 +198,25 @@ namespace founder_graphs {
 		libbio_always_assert_eq(current_block_uncompressed_size(), retval);
 		
 		return retval;
+	}
+	
+	
+	void check_matching_bgzip_index_entries(std::vector <bgzip_reader> const &readers)
+	{
+		// Check for matching index entries.
+		auto const &first_handle(readers.front());
+		auto const &first_entries(first_handle.index_entries());
+		auto const first_count(first_handle.block_count());
+		for (std::size_t i(1); i < readers.size(); ++i)
+			libbio_always_assert_eq(readers[i].block_count(), first_count);
+		
+		for (std::size_t i(0); i < first_count; ++i)
+		{
+			for (std::size_t j(1); j < readers.size(); ++j)
+			{
+				auto const &entries(readers[j].index_entries());
+				libbio_always_assert_eq(first_entries[i].uncompressed_offset, entries[i].uncompressed_offset);
+			}
+		}
 	}
 }

@@ -32,6 +32,12 @@ namespace founder_graphs {
 		bool operator<(bgzip_index_entry const &other) const { return compressed_offset < other.compressed_offset; }
 	};
 	
+	struct bgzip_index_entry_uncompressed_offset_cmp
+	{
+		bool operator()(bgzip_index_entry const &lhs, std::size_t const rhs) const { return lhs.uncompressed_offset < rhs; }
+		bool operator()(std::size_t const lhs, bgzip_index_entry const &rhs) const { return lhs < rhs.uncompressed_offset; }
+	};
+	
 	typedef std::vector <bgzip_index_entry> index_entry_vector;
 	
 	
@@ -50,17 +56,34 @@ namespace founder_graphs {
 		
 		index_entry_vector const &index_entries() const { return m_index_entries; }
 		
+		std::size_t find_uncompressed_offset(std::size_t const offset) const { return find_uncompressed_offset(offset, 0); }
+		inline std::size_t find_uncompressed_offset(std::size_t const offset, std::size_t const start) const;
+		
 		std::size_t current_block() const { return m_current_block; }
 		std::size_t block_count() const { return m_index_entries.size() - 1; }
 		void block_seek(std::size_t const block) { m_current_block = block; } // No bounds check.
 		inline bool block_seek_previous();
 		inline bool block_seek_next();
 		inline std::size_t uncompressed_size() const;
+		inline std::size_t current_block_compressed_offset() const;
 		inline std::size_t current_block_uncompressed_offset() const;
-		inline std::size_t current_block_uncompressed_size() const;
-		void read_current_block();
+		std::size_t current_block_compressed_size() const { return block_compressed_size(1); }
+		std::size_t current_block_uncompressed_size() const { return block_uncompressed_size(1); }
+		inline std::size_t block_compressed_size(std::size_t const count) const; // Relative to current position.
+		inline std::size_t block_uncompressed_size(std::size_t const count) const; // Relative to current position.
+		void read_current_block() { read_blocks(1); }
+		void read_blocks(std::size_t const count);
 		std::size_t decompress(std::span <char> buffer) const;
 	};
+	
+	
+	std::size_t bgzip_reader::find_uncompressed_offset(std::size_t const offset, std::size_t const start) const
+	{
+		auto const it(std::lower_bound(m_index_entries.begin() + start, m_index_entries.end(), offset, bgzip_index_entry_uncompressed_offset_cmp()));
+		if (m_index_entries.end() == it)
+			return SIZE_MAX;
+		return it - m_index_entries.begin();
+	}
 	
 	
 	bool bgzip_reader::block_seek_previous()
@@ -92,17 +115,34 @@ namespace founder_graphs {
 	}
 	
 	
+	std::size_t bgzip_reader::current_block_compressed_offset() const
+	{
+		return m_index_entries[m_current_block].uncompressed_offset;
+	}
+	
+	
 	std::size_t bgzip_reader::current_block_uncompressed_offset() const
 	{
 		return m_index_entries[m_current_block].uncompressed_offset;
 	}
 	
 	
-	std::size_t bgzip_reader::current_block_uncompressed_size() const
+	std::size_t bgzip_reader::block_compressed_size(std::size_t const count) const
 	{
-		libbio_assert_lt(1 + m_current_block, m_index_entries.size());
-		return m_index_entries[1 + m_current_block].uncompressed_offset - current_block_uncompressed_offset();
+		libbio_always_assert_lt(count + m_current_block, m_index_entries.size());
+		return m_index_entries[count + m_current_block].compressed_offset - current_block_uncompressed_offset();
 	}
+	
+	
+	std::size_t bgzip_reader::block_uncompressed_size(std::size_t const count) const
+	{
+		libbio_always_assert_lt(count + m_current_block, m_index_entries.size());
+		return m_index_entries[count + m_current_block].uncompressed_offset - current_block_uncompressed_offset();
+	}
+	
+	
+	// For checking that MSAs have matching indices.
+	void check_matching_bgzip_index_entries(std::vector <bgzip_reader> const &readers);
 }
 
 #endif

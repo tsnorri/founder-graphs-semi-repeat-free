@@ -29,6 +29,7 @@ namespace founder_graphs {
 		std::size_t							m_current_block_size{};
 		
 	public:
+		virtual ~reverse_msa_reader() {}
 		virtual void add_file(std::string const &path) = 0;
 		virtual void prepare() = 0;
 		virtual bool fill_buffer(fill_buffer_callback_type &) = 0;

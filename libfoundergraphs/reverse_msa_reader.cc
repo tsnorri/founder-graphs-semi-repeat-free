@@ -32,7 +32,6 @@ namespace founder_graphs {
 		else
 		{
 			libbio_always_assert_eq(m_aligned_size, aligned_size);
-			libbio_always_assert_eq(m_preferred_block_size, preferred_block_size);
 		}
 	}
 	
@@ -76,23 +75,13 @@ namespace founder_graphs {
 		// Prepare the decompression group.
 		m_decompress_group.reset(dispatch_group_create());
 		
-		// Check for matching index entries.
+		// Check the index entries.
+		check_matching_bgzip_index_entries(m_handles);
+		
+		// Determine the max. block size.
 		auto const &first_handle(m_handles.front());
 		auto const &first_entries(first_handle.index_entries());
 		auto const first_count(first_handle.block_count());
-		for (std::size_t i(1); i < m_handles.size(); ++i)
-			libbio_always_assert_eq(m_handles[i].block_count(), first_count);
-		
-		for (std::size_t i(0); i < first_count; ++i)
-		{
-			for (std::size_t j(1); j < m_handles.size(); ++j)
-			{
-				auto const &entries(m_handles[j].index_entries());
-				libbio_always_assert_eq(first_entries[i].uncompressed_offset, entries[i].uncompressed_offset);
-			}
-		}
-		
-		// Determine the max. block size.
 		std::size_t max_uncompressed_block_size{};
 		for (std::size_t i(1); i < first_count; ++i)
 		{
