@@ -2,6 +2,7 @@ include local.mk
 include common.mk
 
 BUILD_PRODUCTS =	build_cst/build_cst \
+					build_founder_graph_index/build_founder_graph_index \
 					build_msa_index/build_msa_index \
 					find_founder_block_boundaries/find_founder_block_boundaries \
 					founder_block_tool/founder_block_tool \
@@ -20,6 +21,7 @@ all: $(BUILD_PRODUCTS)
 clean:
 	$(MAKE) -C libfoundergraphs clean
 	$(MAKE) -C build_cst clean
+	$(MAKE) -C build_founder_graph_index clean
 	$(MAKE) -C build_sa clean
 	$(MAKE) -C build_msa_index clean
 	$(MAKE) -C find_founder_block_boundaries clean
@@ -35,6 +37,9 @@ libfoundergraphs/libfoundergraphs.a: $(LIBBIO_DEPENDENCIES)
 
 build_cst/build_cst: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C build_cst
+
+build_founder_graph_index/build_founder_graph_index: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C build_founder_graph_index
 
 build_msa_index/build_msa_index: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C build_msa_index
