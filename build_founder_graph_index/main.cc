@@ -105,7 +105,8 @@ namespace {
 		segment_map &concatenated_segments,
 		segment_buffer_type &segment_buffer,
 		std::size_t const segment_idx, 			// Segment or segment pair index.
-		bool const should_count_prefixes
+		bool const should_count_prefixes,
+		bool const should_omit_segments
 	)
 	{
 		// Move the nodes to the buffer.
@@ -163,8 +164,16 @@ namespace {
 				++it;
 			}
 			
-			for (auto const &kv : concatenated_segments)
-				std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first << '\n';
+			if (should_omit_segments)
+			{
+				for (auto const &kv : concatenated_segments)
+					std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first.size() << '\n';
+			}
+			else
+			{
+				for (auto const &kv : concatenated_segments)
+					std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first << '\n';
+			}
 		}
 		else
 		{
@@ -180,7 +189,8 @@ namespace {
 		char const *sequence_list_path,
 		char const *segmentation_path,
 		bool const input_is_gzipped,
-		bool const should_output_block_contents_only
+		bool const should_output_block_contents_only,
+		bool const should_omit_segments
 	)
 	{
 		// Open the segmentation.
@@ -213,7 +223,10 @@ namespace {
 		if (should_output_block_contents_only)
 		{
 			// Output segments one per line with prefix counts.
-			std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL\n";
+			if (should_omit_segments)
+				std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL_LENGTH\n";
+			else
+				std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL\n";
 			fg::length_type lb{};
 			for (fg::length_type i(0); i < block_count; ++i)
 			{
@@ -221,7 +234,7 @@ namespace {
 				fg::length_type rb{};
 				archive(rb);
 			
-				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, true);
+				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, true, should_omit_segments);
 			
 				// Update the pointer.
 				lb = rb;
@@ -242,7 +255,7 @@ namespace {
 					fg::length_type rb{};
 					archive(rb);
 				
-					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, false);
+					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, false, false);
 				
 					// Update the pointers.
 					lb = mid;
@@ -274,12 +287,12 @@ int main(int argc, char **argv)
 		if (args_info.bgzip_input_given)
 		{
 			fg::bgzip_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given);
+			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given, args_info.omit_segments_given);
 		}
 		else
 		{
 			fg::text_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given);
+			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given, args_info.omit_segments_given);
 		}
 	}
 	else
