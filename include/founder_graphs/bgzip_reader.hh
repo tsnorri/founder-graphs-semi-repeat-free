@@ -49,6 +49,7 @@ namespace founder_graphs {
 		std::vector <char>	m_input_buffer;
 		std::size_t			m_current_block{};
 		std::size_t			m_preferred_block_size{};
+		std::size_t			m_last_read_count{};
 		
 	public:
 		void open(std::string const &path);

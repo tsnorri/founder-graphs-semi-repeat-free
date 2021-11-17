@@ -182,6 +182,7 @@ namespace founder_graphs {
 		auto const length(next_offset - offset);
 		m_input_buffer.resize(length);
 		read_from_file(m_handle, offset, length, m_input_buffer.data());
+		m_last_read_count = count;
 	}
 	
 	
@@ -195,7 +196,7 @@ namespace founder_graphs {
 		// There should be no more compressed data available.
 		// The filtering stream buffer is not seekable (but this seems to be the easiest way to 
 		// decompress a gzip block), so we use the uncompressed size stored in the input.
-		libbio_always_assert_eq(current_block_uncompressed_size(), retval);
+		libbio_always_assert_eq(block_uncompressed_size(m_last_read_count), retval);
 		
 		return retval;
 	}
