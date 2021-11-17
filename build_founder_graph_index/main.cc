@@ -180,7 +180,7 @@ namespace {
 		char const *sequence_list_path,
 		char const *segmentation_path,
 		bool const input_is_gzipped,
-		bool const should_output_segments_only
+		bool const should_output_block_contents_only
 	)
 	{
 		// Open the segmentation.
@@ -210,7 +210,7 @@ namespace {
 		segment_map concatenated_segments;
 		segment_buffer_type segment_buffer;
 		
-		if (should_output_segments_only)
+		if (should_output_block_contents_only)
 		{
 			// Output segments one per line with prefix counts.
 			std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL\n";
@@ -274,12 +274,12 @@ int main(int argc, char **argv)
 		if (args_info.bgzip_input_given)
 		{
 			fg::bgzip_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.segments_only_given);
+			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given);
 		}
 		else
 		{
 			fg::text_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.segments_only_given);
+			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given);
 		}
 	}
 	else

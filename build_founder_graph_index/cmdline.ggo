@@ -11,4 +11,4 @@ modeoption	"generate-indexable-text"	G	"Generate the indexable text"									mod
 modeoption	"sequence-list"				s	"Sequence list path"			string	typestr = "filename"	mode = "Generate indexable text"	required
 modeoption	"segmentation"				e	"Optimized segmentation path"	string	typestr = "filename"	mode = "Generate indexable text"	required
 modeoption	"bgzip-input"				z	"Sequences are gzipped"											mode = "Generate indexable text"	optional
-modeoption	"segments-only"				-	"Output segments only"											mode = "Generate indexable text"	optional
+modeoption	"block-contents"			b	"Output block contents as TSV only"								mode = "Generate indexable text"	optional
