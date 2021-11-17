@@ -4,6 +4,7 @@
  */
 
 #include <cereal/archives/portable_binary.hpp>
+#include <compare>
 #include <founder_graphs/basic_types.hh>
 #include <founder_graphs/msa_reader.hh>
 #include <iostream>
@@ -19,15 +20,81 @@ namespace lb	= libbio;
 
 namespace {
 	
-	typedef std::map <std::string, std::size_t, lb::compare_strings_transparent>		segment_map;
-	typedef std::multimap <std::string, std::size_t, lb::compare_strings_transparent>	segment_buffer_type;
+	// Compare a substring that originates from the input sequences (rhs) to one that has already
+	// been stored (lhs). We require that the stored sequences may not contain gap characters.
+	// To check for prefixes later, we (unfortunately) need lexicographic order instead of
+	// e.g. first ordering by length.
+	struct segment_cmp
+	{
+		typedef std::true_type is_transparent;
+		
+		// FIXME: I don’t know how a comparison operator that returns std::strong_ordering is supposed to be named.
+		template <typename t_char, std::size_t t_extent>
+		std::strong_ordering strong_order(std::string const &lhs, std::span <t_char, t_extent> const rhs) const
+		{
+			std::size_t i(0);
+			std::size_t j(0);
+			std::size_t lhs_gap_count(0);
+			std::size_t const lc(lhs.size());
+			std::size_t const rc(rhs.size());
+			while (i < lc && j < rc)
+			{
+				// Check for a gap.
+				while ('-' == rhs[j])
+				{
+					++j;
+					++lhs_gap_count;
+					if (j == rc)
+						goto exit_loop;
+				}
+				
+				// Compare and check for equality.
+				auto const res(lhs[i] <=> rhs[j]);
+				if (std::is_neq(res))
+					return res;
+				
+				// Continue.
+				++i;
+				++j;
+			}
+			
+		exit_loop:
+			// The strings have equal prefixes. Compare the lengths.
+			return ((lc - lhs_gap_count) <=> rc);
+		}
+		
+		// Less-than operators.
+		template <typename t_char, std::size_t t_extent>
+		bool operator()(std::string const &lhs, std::span <t_char, t_extent> const rhs) const
+		{
+			return std::is_lt(strong_order(lhs, rhs));
+		}
+		
+		template <typename t_char, std::size_t t_extent>
+		bool operator()(std::span <t_char, t_extent> const lhs, std::string const &rhs) const
+		{
+			return std::is_gteq(strong_order(rhs, lhs));
+		}
+		
+		// For pairs of map keys.
+		bool operator()(std::string const &lhs, std::string const &rhs) const
+		{
+			return lhs < rhs;
+		}
+	};
+	
+	
+	typedef std::map <std::string, std::size_t, segment_cmp>		segment_map;
+	typedef std::multimap <std::string, std::size_t, segment_cmp>	segment_buffer_type;
 	
 	
 	// For assigning std::span <char> to std::string.
-	void assign(std::span <char> const src, std::string &dst)
+	void remove_gaps_and_assign(std::span <char> const src, std::string &dst)
 	{
 		dst.resize(src.size());
-		std::copy(src.begin(), src.end(), dst.begin());
+		std::copy_if(src.begin(), src.end(), dst.begin(), [](auto const cc){
+			return '-' != cc;
+		});
 	}
 	
 	
@@ -37,6 +104,7 @@ namespace {
 		std::size_t const rb,
 		segment_map &concatenated_segments,
 		segment_buffer_type &segment_buffer,
+		std::size_t const segment_idx, 			// Segment or segment pair index.
 		bool const should_count_prefixes
 	)
 	{
@@ -59,16 +127,14 @@ namespace {
 					// New segment, add to the set.
 					if (segment_buffer.empty())
 					{
-						concatenated_segments.emplace(
-							std::piecewise_construct,
-							std::forward_as_tuple(span.data(), span.size()),
-							std::forward_as_tuple(0)
-						);
+						std::string key;
+						remove_gaps_and_assign(span, key);
+						concatenated_segments.emplace(std::move(key), 0);
 					}
 					else
 					{
 						auto nh(segment_buffer.extract(segment_buffer.begin()));
-						assign(span, nh.key());
+						remove_gaps_and_assign(span, nh.key());
 						nh.mapped() = 0;
 						concatenated_segments.insert(std::move(nh));
 					}
@@ -98,7 +164,7 @@ namespace {
 			}
 			
 			for (auto const &kv : concatenated_segments)
-				std::cout << kv.first << '\t' << kv.second << '\n';
+				std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first << '\n';
 		}
 		else
 		{
@@ -147,6 +213,7 @@ namespace {
 		if (should_output_segments_only)
 		{
 			// Output segments one per line with prefix counts.
+			std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL\n";
 			fg::length_type lb{};
 			for (fg::length_type i(0); i < block_count; ++i)
 			{
@@ -154,7 +221,7 @@ namespace {
 				fg::length_type rb{};
 				archive(rb);
 			
-				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, true);
+				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, true);
 			
 				// Update the pointer.
 				lb = rb;
@@ -175,7 +242,7 @@ namespace {
 					fg::length_type rb{};
 					archive(rb);
 				
-					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, false);
+					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, false);
 				
 					// Update the pointers.
 					lb = mid;
