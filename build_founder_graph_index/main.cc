@@ -19,8 +19,8 @@ namespace lb	= libbio;
 
 namespace {
 	
-	typedef std::set <std::string, lb::compare_strings_transparent>	segment_set;
-	typedef std::multiset <std::string>								segment_buffer_type;
+	typedef std::map <std::string, std::size_t, lb::compare_strings_transparent>		segment_map;
+	typedef std::multimap <std::string, std::size_t, lb::compare_strings_transparent>	segment_buffer_type;
 	
 	
 	// For assigning std::span <char> to std::string.
@@ -35,16 +35,16 @@ namespace {
 		fg::msa_reader &reader,
 		std::size_t const lb,
 		std::size_t const rb,
-		char const separator,
-		segment_set &concatenated_segments,
-		segment_buffer_type &segment_buffer
+		segment_map &concatenated_segments,
+		segment_buffer_type &segment_buffer,
+		bool const should_count_prefixes
 	)
 	{
 		// Move the nodes to the buffer.
 		while (!concatenated_segments.empty())
 		{
 			auto nh(concatenated_segments.extract(concatenated_segments.begin()));
-			nh.value().clear();
+			nh.key().clear();
 			segment_buffer.insert(segment_buffer.end(), std::move(nh));
 		}
 		
@@ -58,11 +58,18 @@ namespace {
 				{
 					// New segment, add to the set.
 					if (segment_buffer.empty())
-						concatenated_segments.emplace(span.data(), span.size());
+					{
+						concatenated_segments.emplace(
+							std::piecewise_construct,
+							std::forward_as_tuple(span.data(), span.size()),
+							std::forward_as_tuple(0)
+						);
+					}
 					else
 					{
 						auto nh(segment_buffer.extract(segment_buffer.begin()));
-						assign(span, nh.value());
+						assign(span, nh.key());
+						nh.mapped() = 0;
 						concatenated_segments.insert(std::move(nh));
 					}
 				}
@@ -71,9 +78,34 @@ namespace {
 			return true;
 		});
 		
-		// Output.
-		for (auto const &segment : concatenated_segments)
-			std::cout << separator << segment;
+		if (should_count_prefixes)
+		{
+			// Count the prefixes and output.
+			// Use a naïve algorithm since the amount of data is expected to be small,
+			// i.e. just check if a segment is a prefix of the succeeding ones in the lexicographic order.
+			auto it(concatenated_segments.begin());
+			auto const end(concatenated_segments.end());
+			while (it != end)
+			{
+				libbio_assert_eq(0, it->second);
+				auto next_it(std::next(it));
+				while (next_it != end && next_it->first.starts_with(it->first))
+				{
+					++it->second;
+					++next_it;
+				}
+				++it;
+			}
+			
+			for (auto const &kv : concatenated_segments)
+				std::cout << kv.first << '\t' << kv.second << '\n';
+		}
+		else
+		{
+			// Output.
+			for (auto const &kv : concatenated_segments)
+				std::cout << '#' << kv.first;
+		}
 	}
 	
 	
@@ -107,12 +139,12 @@ namespace {
 		fg::length_type block_count{};
 		archive(cereal::make_size_tag(block_count));
 		
-		segment_set concatenated_segments;
+		segment_map concatenated_segments;
 		segment_buffer_type segment_buffer;
 		
 		if (should_output_segments_only)
 		{
-			// Output segments one per line.
+			// Output segments one per line with prefix counts.
 			fg::length_type lb{};
 			for (fg::length_type i(0); i < block_count; ++i)
 			{
@@ -120,7 +152,7 @@ namespace {
 				fg::length_type rb{};
 				archive(rb);
 			
-				handle_block_range(reader, lb, rb, '\n', concatenated_segments, segment_buffer);
+				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, true);
 			
 				// Update the pointer.
 				lb = rb;
@@ -140,7 +172,7 @@ namespace {
 					fg::length_type rb{};
 					archive(rb);
 				
-					handle_block_range(reader, lb, rb, '#', concatenated_segments, segment_buffer);
+					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, false);
 				
 					// Update the pointers.
 					lb = mid;
