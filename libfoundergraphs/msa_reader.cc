@@ -200,7 +200,24 @@ namespace founder_graphs {
 			
 			if constexpr (range_overlap_type::LEFT_OVERLAP == t_overlap_type)
 			{
+				// [block_lb, block_rb) is to the right from range.
+				// Resize the buffer.
+				buffer.resize(uncompressed_size);
+				
 				// Check if the buffer contents need to be shifted.
+				libbio_assert_lte(aln_rb, current_aln_rb);
+				auto const shift_amt(current_aln_rb - aln_rb);
+				if (shift_amt)
+					std::move_backward(buffer.begin(), buffer.begin() + shift_amt, buffer.end());
+				
+				// Decompress.
+				handle.decompress(std::span <char>(buffer.data(), buffer.size() - shift_amt));
+			}
+			else  // RIGHT_OVERLAP
+			{
+				// [block_lb, block_rb) is to the left from range.
+				// Check if the buffer contents need to be shifted.
+				libbio_assert_lte(current_aln_lb, aln_lb);
 				auto const shift_amt(aln_lb - current_aln_lb);
 				if (shift_amt)
 					std::move(buffer.begin() + shift_amt, buffer.end(), buffer.begin());
@@ -209,19 +226,6 @@ namespace founder_graphs {
 				auto const buffer_left_pad(current_aln_rb - aln_lb);
 				buffer.resize(uncompressed_size);
 				handle.decompress(std::span <char>(buffer.data() + buffer_left_pad, buffer.size() - buffer_left_pad));
-			}
-			else  // RIGHT_OVERLAP
-			{
-				// Resize the buffer.
-				buffer.resize(uncompressed_size);
-				
-				// Check if the buffer contents need to be shifted.
-				auto const shift_len(current_aln_rb - aln_rb);
-				if (shift_len)
-					std::move_backward(buffer.begin(), buffer.begin() + shift_len, buffer.end());
-				
-				// Decompress.
-				handle.decompress(std::span <char>(buffer.data(), buffer.size() - shift_len));
 			}
 		}
 		
