@@ -118,12 +118,14 @@ namespace {
 	)
 	{
 		// Open the segmentation.
+		lb::log_time(std::cerr) << "Loading the segmentation…\n";
 		lb::file_istream segmentation_stream;
 		lb::open_file_for_reading(segmentation_path, segmentation_stream);
 		cereal::PortableBinaryInputArchive archive(segmentation_stream);
 		
 		// Read the sequence file paths.
 		{
+			lb::log_time(std::cerr) << "Loading the sequences…\n";
 			lb::file_istream sequence_list_stream;;
 			lb::open_file_for_reading(sequence_list_path, sequence_list_stream);
 			
@@ -135,7 +137,7 @@ namespace {
 		reader.prepare();
 		
 		// Read the block boundaries and generate the text.
-		// Maintain two ranges, [lb, mid) and [mid, rb).
+		lb::log_time(std::cerr) << "Processing…\n";
 		fg::length_type block_count{};
 		archive(cereal::make_size_tag(block_count));
 		
@@ -161,6 +163,7 @@ namespace {
 		else
 		{
 			// Output a text that consists of concatenated pairs of segments separated by ‘#’ characters.
+			// Maintain two ranges, [lb, mid) and [mid, rb).
 			fg::length_type lb{};
 			if (block_count)
 			{
