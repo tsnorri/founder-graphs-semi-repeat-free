@@ -172,6 +172,9 @@ namespace founder_graphs {
 			t_overlap_type == range_overlap_type::RIGHT_OVERLAP	||
 			t_overlap_type == range_overlap_type::DISJOINT
 		);
+
+		libbio_assert_lt(lb, rb);
+		libbio_assert_lt(block_lb, block_rb);
 		
 		// We only write to the i-th elements of m_handles, m_current_block_ranges, m_spans, m_buffers
 		// and make sure that no one else does the same, so no locking needed.
@@ -230,8 +233,11 @@ namespace founder_graphs {
 		}
 		
 		// Update the pointers.
+		libbio_assert_lte(aln_lb, lb);
+		libbio_assert_lte(rb, aln_rb);
 		auto const span_left_pad(lb - aln_lb);
 		auto const span_right_pad(aln_rb - rb);
+		libbio_assert_lte(span_left_pad + span_right_pad, buffer.size());
 		span = span_type(buffer.data() + span_left_pad, buffer.size() - span_right_pad - span_left_pad);
 		range.block_lb = block_lb;
 		range.block_rb = block_rb;
@@ -253,8 +259,8 @@ namespace founder_graphs {
 			auto const &index_entries(handle.index_entries());
 			
 			// Determine the blocks that contain the requested range.
-			auto const block_lb(handle.find_uncompressed_offset(lb));
-			auto const block_rb(1 + handle.find_uncompressed_offset(rb - 1, block_lb));
+			auto const block_lb(handle.find_uncompressed_offset_left(lb));
+			auto const block_rb(1 + handle.find_uncompressed_offset_right(rb - 1, block_lb));
 			libbio_assert_neq(block_lb, SIZE_MAX);
 			libbio_assert_neq(block_rb, 0); // Take the addition into account.
 			

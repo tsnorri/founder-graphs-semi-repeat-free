@@ -57,8 +57,9 @@ namespace founder_graphs {
 		
 		index_entry_vector const &index_entries() const { return m_index_entries; }
 		
-		std::size_t find_uncompressed_offset(std::size_t const offset) const { return find_uncompressed_offset(offset, 0); }
-		inline std::size_t find_uncompressed_offset(std::size_t const offset, std::size_t const start) const;
+		inline std::size_t find_uncompressed_offset_left(std::size_t const offset) const;
+		std::size_t find_uncompressed_offset_right(std::size_t const offset) const { return find_uncompressed_offset_right(offset, 0); }
+		inline std::size_t find_uncompressed_offset_right(std::size_t const offset, std::size_t const start) const;
 		
 		std::size_t current_block() const { return m_current_block; }
 		std::size_t block_count() const { return m_index_entries.size() - 1; }
@@ -78,7 +79,17 @@ namespace founder_graphs {
 	};
 	
 	
-	std::size_t bgzip_reader::find_uncompressed_offset(std::size_t const offset, std::size_t const start) const
+	std::size_t bgzip_reader::find_uncompressed_offset_left(std::size_t const offset) const
+	{
+		auto const it(std::upper_bound(m_index_entries.begin(), m_index_entries.end(), offset, bgzip_index_entry_uncompressed_offset_cmp()));
+		if (m_index_entries.end() == it)
+			return SIZE_MAX;
+		return it - m_index_entries.begin() - 1;
+	}
+
+
+
+	std::size_t bgzip_reader::find_uncompressed_offset_right(std::size_t const offset, std::size_t const start) const
 	{
 		auto const it(std::lower_bound(m_index_entries.begin() + start, m_index_entries.end(), offset, bgzip_index_entry_uncompressed_offset_cmp()));
 		if (m_index_entries.end() == it)
