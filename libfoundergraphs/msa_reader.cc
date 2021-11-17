@@ -136,8 +136,6 @@ namespace founder_graphs {
 	void bgzip_msa_reader::add_file(std::string const &path)
 	{
 		auto &handle(m_handles.emplace_back());
-		m_current_block_ranges.emplace_back();
-		m_spans.emplace_back();
 		handle.open(path);
 	}
 	
@@ -152,6 +150,11 @@ namespace founder_graphs {
 		
 		// Check the index entries.
 		check_matching_bgzip_index_entries(m_handles);
+		
+		// Initialize the other vectors.
+		m_current_block_ranges.resize(m_handles.size());
+		m_spans.resize(m_handles.size());
+		m_buffers.resize(m_handles.size());
 	}
 	
 	
