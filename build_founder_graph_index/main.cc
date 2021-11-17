@@ -234,6 +234,7 @@ namespace {
 				fg::length_type rb{};
 				archive(rb);
 			
+				lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
 				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, true, should_omit_segments);
 			
 				// Update the pointer.
@@ -251,6 +252,8 @@ namespace {
 				archive(mid);
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
+					lb::log_time(std::cerr) << "Block " << i << '/' << (block_count - 1) << "…\n";
+
 					// Read the next right bound.
 					fg::length_type rb{};
 					archive(rb);
