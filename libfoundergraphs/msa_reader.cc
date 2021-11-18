@@ -148,9 +148,6 @@ namespace founder_graphs {
 		// Prepare the decompression group.
 		m_decompress_group.reset(dispatch_group_create());
 		
-		// Check the index entries.
-		check_matching_bgzip_index_entries(m_handles);
-		
 		// Initialize the other vectors.
 		m_current_block_ranges.resize(m_handles.size());
 		m_spans.resize(m_handles.size());
