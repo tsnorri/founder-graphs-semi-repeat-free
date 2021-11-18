@@ -170,12 +170,20 @@ namespace founder_graphs {
 			);
 			m_index_entries.emplace_back(sentinel_compressed_offset, sentinel_uncompressed_offset);
 		}
+
+		// Sanity check.
+		for (std::size_t i(1), count(m_index_entries.size()); i < count; ++i)
+		{
+			libbio_always_assert_lt(m_index_entries[i - 1].compressed_offset, m_index_entries[i].compressed_offset);
+			libbio_always_assert_lt(m_index_entries[i - 1].uncompressed_offset, m_index_entries[i].uncompressed_offset);
+		}
 	}
 	
 	
 	void bgzip_reader::read_blocks(std::size_t const count)
 	{
 		// Read the compressed block.
+		libbio_assert_lt(count + m_current_block, m_index_entries.size());
 		auto const offset(m_index_entries[m_current_block].compressed_offset);
 		auto const next_offset(m_index_entries[count + m_current_block].compressed_offset);
 		libbio_assert_lt(offset, next_offset);
@@ -204,6 +212,7 @@ namespace founder_graphs {
 	
 	void check_matching_bgzip_index_entries(std::vector <bgzip_reader> const &readers)
 	{
+		// FIXME: at least the assumption that the indices have the same numbers of blocks does not seem to be valid. This might affect reverse_msa_reader. I could just replace it with msa_reader.
 		// Check for matching index entries.
 		auto const &first_handle(readers.front());
 		auto const &first_entries(first_handle.index_entries());
