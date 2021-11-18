@@ -10,6 +10,7 @@
 #include <functional>
 #include <libbio/dispatch/dispatch_ptr.hh>
 #include <libbio/file_handle.hh>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,8 @@ namespace founder_graphs {
 			std::size_t		block_lb{};
 			std::size_t		block_rb{};
 		};
+
+		friend std::ostream &operator<<(std::ostream &, block_range const &);
 		
 	protected:
 		std::vector <bgzip_reader>				m_handles;
@@ -106,6 +109,13 @@ namespace founder_graphs {
 			std::size_t const block_rb
 		);
 	};
+
+
+	inline std::ostream &operator<<(std::ostream &os, bgzip_msa_reader::block_range const &br)
+	{
+		os << "block_lb: " << br.block_lb << " block_rb: " << br.block_rb;
+		return os;
+	}
 }
 
 #endif

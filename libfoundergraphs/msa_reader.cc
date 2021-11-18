@@ -251,58 +251,77 @@ namespace founder_graphs {
 		auto const queue(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));
 		for (auto &&[i, tup] : rsv::enumerate(rsv::zip(m_handles, m_current_block_ranges, m_spans, m_buffers)))
 		{
-			auto const i_(i); // For the ^{} blocks below.
+			auto const i_(i); // For the ^{} blocks below; blocks don’t (at least as of Clang++12) copy local bindings.
 			auto &[handle, current_range, span, buffer] = tup;
 			auto const &index_entries(handle.index_entries());
 			
 			// Determine the blocks that contain the requested range.
-			auto const block_lb(handle.find_uncompressed_offset_left(lb));
-			auto const block_rb(1 + handle.find_uncompressed_offset_right(rb - 1, block_lb));
-			libbio_assert_neq(block_lb, SIZE_MAX);
-			libbio_assert_neq(block_rb, 0); // Take the addition into account.
-			
-			// Check if we need to shift the buffer contents.
-			switch (range_overlap(current_range.block_lb, current_range.block_rb, block_lb, block_rb))
+			auto const new_range(handle.find_uncompressed_range(lb, rb));
+			auto const block_lb(new_range.first); // Assign similarly to i_.
+			auto const block_rb(new_range.second);
+
+			try
 			{
-				case range_overlap_type::INCLUDES:
-					// Just update the span.
-					span = span_type(buffer.data() + (lb - handle.current_block_uncompressed_offset()), rb - lb);
-					break;
+				libbio_assert_lte(rb, index_entries.back().uncompressed_offset); // Compare to the sentinel.
+				libbio_assert_neq(block_lb, SIZE_MAX);
+				libbio_assert_neq(block_rb, 0); // Take the addition into account.
 				
-				case range_overlap_type::LEFT_OVERLAP:
+				// Check if we need to shift the buffer contents.
+				switch (range_overlap(current_range.block_lb, current_range.block_rb, block_lb, block_rb))
 				{
-					did_start_decompress = true;
-					handle.block_seek(block_lb);
-					handle.read_blocks(current_range.block_lb - block_lb);
-					dispatch_group_async(*m_decompress_group, queue, ^{
-						// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
-						update_decompressed <range_overlap_type::LEFT_OVERLAP>(i_, lb, rb, block_lb, block_rb);
-					});
-					break;
+					case range_overlap_type::INCLUDES:
+						// Just update the span.
+						span = span_type(buffer.data() + (lb - handle.current_block_uncompressed_offset()), rb - lb);
+						break;
+					
+					case range_overlap_type::LEFT_OVERLAP:
+					{
+						did_start_decompress = true;
+						handle.block_seek(block_lb);
+						handle.read_blocks(current_range.block_lb - block_lb);
+						dispatch_group_async(*m_decompress_group, queue, ^{
+							// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
+							update_decompressed <range_overlap_type::LEFT_OVERLAP>(i_, lb, rb, block_lb, block_rb);
+						});
+						break;
+					}
+					
+					case range_overlap_type::RIGHT_OVERLAP:
+					{
+						did_start_decompress = true;
+						handle.block_seek(current_range.block_rb);
+						handle.read_blocks(block_rb - current_range.block_rb);
+						dispatch_group_async(*m_decompress_group, queue, ^{
+							// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
+							update_decompressed <range_overlap_type::RIGHT_OVERLAP>(i_, lb, rb, block_lb, block_rb);
+						});
+						break;
+					}
+					
+					case range_overlap_type::DISJOINT:
+					{
+						did_start_decompress = true;
+						handle.block_seek(block_lb);
+						handle.read_blocks(block_rb - block_lb);
+						dispatch_group_async(*m_decompress_group, queue, ^{
+							// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
+							update_decompressed <range_overlap_type::DISJOINT>(i_, lb, rb, block_lb, block_rb);
+						});
+					}
 				}
-				
-				case range_overlap_type::RIGHT_OVERLAP:
-				{
-					did_start_decompress = true;
-					handle.block_seek(current_range.block_rb);
-					handle.read_blocks(block_rb - current_range.block_rb);
-					dispatch_group_async(*m_decompress_group, queue, ^{
-						// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
-						update_decompressed <range_overlap_type::RIGHT_OVERLAP>(i_, lb, rb, block_lb, block_rb);
-					});
-					break;
-				}
-				
-				case range_overlap_type::DISJOINT:
-				{
-					did_start_decompress = true;
-					handle.block_seek(block_lb);
-					handle.read_blocks(block_rb - block_lb);
-					dispatch_group_async(*m_decompress_group, queue, ^{
-						// Make sure everything can be copied or const-referenced, since we’re using a ^{} block.
-						update_decompressed <range_overlap_type::DISJOINT>(i_, lb, rb, block_lb, block_rb);
-					});
-				}
+			}
+			catch (lb::assertion_failure_exception const &exc)
+			{
+				// For debugging.
+				std::cerr << "lb: " << lb << " rb: " << rb << '\n';
+				std::cerr << "i: " << i << '\n';
+				std::cerr << "block_lb: " << block_lb << " block_rb: " << block_rb << '\n';
+				std::cerr << "current_range: " << current_range << '\n';
+				std::cerr << "index_entries:\n";
+				for (auto const &[i, entry] : rsv::enumerate(index_entries))
+					std::cerr << i << ": " << entry << '\n';
+
+				throw exc;
 			}
 		}
 		

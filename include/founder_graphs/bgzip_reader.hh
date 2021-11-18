@@ -10,6 +10,7 @@
 #include <libbio/assert.hh>
 #include <libbio/cxxcompat.hh>
 #include <libbio/file_handle.hh>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,12 @@ namespace founder_graphs {
 		
 		bool operator<(bgzip_index_entry const &other) const { return compressed_offset < other.compressed_offset; }
 	};
+
+	inline std::ostream &operator<<(std::ostream &os, bgzip_index_entry const &entry)
+	{
+		os << "compressed_offset: " << entry.compressed_offset << " uncompressed_offset: " << entry.uncompressed_offset;
+		return os;
+	}
 	
 	struct bgzip_index_entry_uncompressed_offset_cmp
 	{
@@ -57,9 +64,10 @@ namespace founder_graphs {
 		
 		index_entry_vector const &index_entries() const { return m_index_entries; }
 		
-		inline std::size_t find_uncompressed_offset_left(std::size_t const offset) const;
-		std::size_t find_uncompressed_offset_right(std::size_t const offset) const { return find_uncompressed_offset_right(offset, 0); }
-		inline std::size_t find_uncompressed_offset_right(std::size_t const offset, std::size_t const start) const;
+		inline std::size_t find_uncompressed_offset_lb(std::size_t const offset) const;
+		std::size_t find_uncompressed_offset_rb(std::size_t const offset) const { return find_uncompressed_offset_rb(offset, 0); }
+		inline std::size_t find_uncompressed_offset_rb(std::size_t const offset, std::size_t const start) const;
+		inline std::pair <std::size_t, std::size_t> find_uncompressed_range(std::size_t const lb, std::size_t const rb) const;
 		
 		std::size_t current_block() const { return m_current_block; }
 		std::size_t block_count() const { return m_index_entries.size() - 1; }
@@ -79,7 +87,7 @@ namespace founder_graphs {
 	};
 	
 	
-	std::size_t bgzip_reader::find_uncompressed_offset_left(std::size_t const offset) const
+	std::size_t bgzip_reader::find_uncompressed_offset_lb(std::size_t const offset) const
 	{
 		auto const it(std::upper_bound(m_index_entries.begin(), m_index_entries.end(), offset, bgzip_index_entry_uncompressed_offset_cmp()));
 		if (m_index_entries.end() == it)
@@ -89,12 +97,22 @@ namespace founder_graphs {
 
 
 
-	std::size_t bgzip_reader::find_uncompressed_offset_right(std::size_t const offset, std::size_t const start) const
+	std::size_t bgzip_reader::find_uncompressed_offset_rb(std::size_t const offset, std::size_t const start) const
 	{
 		auto const it(std::lower_bound(m_index_entries.begin() + start, m_index_entries.end(), offset, bgzip_index_entry_uncompressed_offset_cmp()));
 		if (m_index_entries.end() == it)
 			return SIZE_MAX;
 		return it - m_index_entries.begin();
+	}
+	
+
+	std::pair <std::size_t, std::size_t> bgzip_reader::find_uncompressed_range(std::size_t const lb, std::size_t const rb) const
+	{
+		auto const block_lb(find_uncompressed_offset_lb(lb));
+		if (SIZE_MAX == block_lb)
+			return {SIZE_MAX, SIZE_MAX};
+		auto const block_rb(find_uncompressed_offset_rb(rb, block_lb));
+		return {block_lb, block_rb};
 	}
 	
 	
