@@ -110,7 +110,10 @@ namespace {
 		{
 			// Output.
 			for (auto const &kv : segments)
-				std::cout << '#' << rsv::reverse(kv.first);
+			{
+				std::cout << '#';
+				std::copy(kv.first.crbegin(), kv.first.crend(), std::ostream_iterator <char>(std::cout));
+			}
 		}
 	};
 	
