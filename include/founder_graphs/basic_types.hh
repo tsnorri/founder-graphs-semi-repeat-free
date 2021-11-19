@@ -6,7 +6,7 @@
 #ifndef FOUNDER_GRAPHS_BASIC_TYPES_HH
 #define FOUNDER_GRAPHS_BASIC_TYPES_HH
 
-#include <cstddef>
+#include <cstdint>
 #include <limits>
 
 
