@@ -1,7 +1,7 @@
 # Copyright (c) 2021 Tuukka Norri
 # This code is licensed under MIT license (see LICENSE for details).
 
-package		"build-founder-graph-index"
+package		"build_founder_graph_index"
 purpose		"Build a founder graph index from optimized segmentation"
 description	"Generates an indexable text from optimized founder graph segmentation and builds a founder graph index from that. For generating indexable text, compressed input needs to be in bgzip format, while for generating the actual index, gzip will suffice."
 

@@ -1,7 +1,7 @@
 # Copyright (c) 2021 Tuukka Norri
 # This code is licensed under MIT license (see LICENSE for details).
 
-package		"build-sa"
+package		"build_sa"
 purpose		"Generate the suffix array of the input text in SDSL-compatible format using Parallel-DivSufSort"
 usage		"build_sa --input=input.txt > input.sa"
 description	"The data structure is written to stdout."

@@ -1,9 +1,9 @@
 # Copyright (c) 2021 Tuukka Norri
 # This code is licensed under MIT license (see LICENSE for details).
 
-package		"build-msa-index"
+package		"build_msa_index"
 purpose		"Build an index from a MSA for preparing a founder graph index"
-usage		"build_msa_index --sequence-list=input-list.txt > msa-index.dat"
+usage		"build_msa_index --sequence-list=input-list.txt [ -z ] > msa-index.dat"
 description	"Builds an index for generating another index based on a founder graph."
 
 option		"sequence-list"	s	"Sequence list path"				string		typestr = "filename"			required
