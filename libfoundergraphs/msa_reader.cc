@@ -246,8 +246,14 @@ namespace founder_graphs {
 	
 	bool bgzip_msa_reader::fill_buffer(std::size_t const lb, std::size_t const rb, fill_buffer_callback_type &cb)
 	{
+		libbio_assert_lt(lb, rb);
+
 		if (m_handles.empty())
 			return false;
+
+		libbio_assert_eq(m_handles.size(), m_current_block_ranges.size());
+		libbio_assert_eq(m_handles.size(), m_spans.size());
+		libbio_assert_eq(m_handles.size(), m_buffers.size());
 		
 		// Handle each bgzip_reader separately b.c. the block boundaries can be arbitrary.
 		bool did_start_decompress{false};
@@ -273,9 +279,13 @@ namespace founder_graphs {
 				switch (range_overlap(current_range.block_lb, current_range.block_rb, block_lb, block_rb))
 				{
 					case range_overlap_type::INCLUDES:
+					{
 						// Just update the span.
-						span = span_type(buffer.data() + (lb - handle.current_block_uncompressed_offset()), rb - lb);
+						auto const current_offset(index_entries[current_range.block_lb].uncompressed_offset);
+						libbio_assert_lte(current_offset, lb);
+						span = span_type(buffer.data() + (lb - current_offset), rb - lb);
 						break;
+					}
 					
 					case range_overlap_type::LEFT_OVERLAP:
 					{
@@ -320,6 +330,7 @@ namespace founder_graphs {
 				std::cerr << "i: " << i << '\n';
 				std::cerr << "block_lb: " << block_lb << " block_rb: " << block_rb << '\n';
 				std::cerr << "current_range: " << current_range << '\n';
+				std::cerr << "handle.current_block_uncompressed_offset(): " << handle.current_block_uncompressed_offset() << '\n';
 				std::cerr << "index_entries:\n";
 				for (auto const &[i, entry] : rsv::enumerate(index_entries))
 					std::cerr << i << ": " << entry << '\n';
