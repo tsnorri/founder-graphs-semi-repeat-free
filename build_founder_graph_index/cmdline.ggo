@@ -14,6 +14,7 @@ modeoption	"segmentation"				e	"Optimized segmentation path"					string	typestr 
 modeoption	"block-contents"			b	"Output block contents"															mode = "Generate indexable texts"		optional
 modeoption	"tsv"						-	"Output as TSV"																	mode = "Generate indexable texts"		optional
 modeoption	"omit-segments"				-	"Omit segments when outputting block contents"									mode = "Generate indexable texts"		optional
+modeoption	"skip-output"				-	"Skip output"																	mode = "Generate indexable texts"		optional
 
 defmode "Generate founder graph index"	modedesc = "Generate a founder graph index from the indexable text and block contents"
 modeoption	"generate-index"			I	"Generate a founder graph index"												mode = "Generate founder graph index"	required

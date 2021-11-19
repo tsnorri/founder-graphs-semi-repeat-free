@@ -92,8 +92,17 @@ namespace {
 	typedef std::multimap <std::string, std::size_t, segment_cmp>	segment_buffer_type;
 	
 	
-	struct output_handler
+	class output_handler
 	{
+	protected:
+		bool m_should_skip_output{};
+
+	public:
+		output_handler(bool const should_skip_output):
+			m_should_skip_output(should_skip_output)
+		{
+		}
+
 		virtual ~output_handler() {}
 		virtual bool needs_prefix_counts() const = 0;
 		virtual void output_header(fg::length_type const block_count) {}
@@ -104,10 +113,15 @@ namespace {
 	class indexable_text_output_handler final : public output_handler
 	{
 	public:
+		using output_handler::output_handler;
+
 		bool needs_prefix_counts() const override { return false; }
 		
 		void output(std::size_t const segment_idx, segment_map const &segments) override
 		{
+			if (m_should_skip_output)
+				return;
+
 			// Output.
 			for (auto const &kv : segments)
 			{
@@ -124,9 +138,8 @@ namespace {
 		bool m_should_omit_segments{};
 		
 	public:
-		block_content_output_handler() = default;
-		
-		block_content_output_handler(bool const should_omit_segments):
+		block_content_output_handler(bool const should_omit_segments, bool const should_skip_output):
+			output_handler(should_skip_output),
 			m_should_omit_segments(should_omit_segments)
 		{
 		}
@@ -142,6 +155,9 @@ namespace {
 		
 		void output_header(fg::length_type const block_count) override
 		{
+			if (m_should_skip_output)
+				return;
+
 			// Output segments one per line with prefix counts.
 			if (m_should_omit_segments)
 				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tSEGMENT_LENGTH\n";
@@ -151,6 +167,9 @@ namespace {
 		
 		void output(std::size_t const block_idx, segment_map const &segments) override
 		{
+			if (m_should_skip_output)
+				return;
+
 			if (m_should_omit_segments)
 			{
 				for (auto const &kv : segments)
@@ -175,11 +194,17 @@ namespace {
 		
 		void output_header(fg::length_type const block_count) override
 		{
+			if (m_should_skip_output)
+				return;
+
 			m_archive(cereal::make_size_tag(block_count));
 		}
 		
 		void output(std::size_t const block_idx, segment_map const &segments) override
 		{
+			if (m_should_skip_output)
+				return;
+
 			fg::length_type segment_count(segments.size());
 			m_archive(cereal::make_size_tag(segment_count));
 			
@@ -373,19 +398,20 @@ namespace {
 		char const *segmentation_path,
 		bool const block_contents_given,
 		bool const tsv_given,
-		bool const omit_segments_given
+		bool const omit_segments_given,
+		bool const skip_output_given
 	)
 	{
 		if (block_contents_given)
 		{
 			if (tsv_given)
 			{
-				block_content_tsv_output_handler handler(omit_segments_given);
+				block_content_tsv_output_handler handler(omit_segments_given, skip_output_given);
 				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 			}
 			else
 			{
-				block_content_binary_output_handler handler(omit_segments_given);
+				block_content_binary_output_handler handler(omit_segments_given, skip_output_given);
 				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 			}
 		}
@@ -394,7 +420,7 @@ namespace {
 			if (tsv_given || omit_segments_given)
 				std::cerr << "WARNING: --tsv and --omit-segments do not have an effect when outputting text for BWT indexing.\n";
 			
-			indexable_text_output_handler handler;
+			indexable_text_output_handler handler(skip_output_given);
 			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 		}
 	}
@@ -425,7 +451,8 @@ int main(int argc, char **argv)
 				args_info.segmentation_arg,
 				args_info.block_contents_given,
 				args_info.tsv_given,
-				args_info.omit_segments_given
+				args_info.omit_segments_given,
+				args_info.skip_output_given
 			);
 		}
 		else
@@ -437,7 +464,8 @@ int main(int argc, char **argv)
 				args_info.segmentation_arg,
 				args_info.block_contents_given,
 				args_info.tsv_given,
-				args_info.omit_segments_given
+				args_info.omit_segments_given,
+				args_info.skip_output_given
 			);
 		}
 	}
