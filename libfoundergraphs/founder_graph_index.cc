@@ -3,6 +3,8 @@
  * This code is licensed under MIT license (see LICENSE for details).
  */
 
+#include <cereal/types/string.hpp>
+#include <founder_graphs/basic_types.hh>
 #include <founder_graphs/founder_graph_index.hh>
 #include <libbio/dispatch.hh>
 #include <libbio/file_handling.hh>
@@ -10,6 +12,7 @@
 #include <range/v3/view/enumerate.hpp>
 //#include <syncstream>
 
+namespace fg	= founder_graphs;
 namespace lb	= libbio;
 namespace rsv	= ranges::views;
 
@@ -18,7 +21,7 @@ namespace {
 	
 	std::ostream &synchronize_ostream(std::ostream &stream)
 	{
-		// My libc++ doesn’t yet have std::osyncstream.
+		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
 		return stream;
 	}
 	
@@ -66,6 +69,14 @@ namespace founder_graphs {
 		// Since each segment can be searched separately, we do this in parallel and write
 		// the boundaries to atomic bit vectors.
 		
+		// The block contents file contains one or more records as follows:
+		// fg::length_type			Number of blocks in the file.
+		// Blocks as follows:
+		//	fg::length_type			Number of segments in the current block.
+		//	Segments as follows:
+		//		fg::length_type		Number of segments (in the same block) the prefix of which this segment is.
+		//		std::string			Segment
+		
 		lb::file_istream block_content_stream;
 		lb::open_file_for_reading(block_content_path, block_content_stream);
 		cereal::PortableBinaryInputArchive archive(block_content_stream);
@@ -83,91 +94,98 @@ namespace founder_graphs {
 		{
 			std::atomic_bool status{true};
 			
-			size_type size{};
-			archive(cereal::make_size_tag(size));
-			
 			// Since the positions in B and E are expected to be at least somewhat far apart and
 			// setting the values does not require specific order, just consistency, we use
 			// atomic bit vectors instead of a serial callback queue. This should be (mostly) fine b.c.
 			// cache line size on x86-64 is 64 bytes and on M1 128 bytes.
-			lb::atomic_bit_vector b_positions(size);
-			lb::atomic_bit_vector e_positions(size);
+			lb::atomic_bit_vector b_positions(m_csa.size());
+			lb::atomic_bit_vector e_positions(m_csa.size());
 			
 			// If I read the reference correctly, the vectors should be zero-filled in C++20, but make sure anyway.
 			for (auto &word : b_positions.word_range()) word.store(0, std::memory_order_relaxed);
 			for (auto &word : e_positions.word_range()) word.store(0, std::memory_order_relaxed);
 			
 			{
-				for (size_type i(0); i < size; ++i)
+				std::size_t seg_idx{};
+				fg::length_type block_count{};
+				archive(cereal::make_size_tag(block_count));
+				for (fg::length_type i(0); i < block_count; ++i)
 				{
-					std::string segment;
-					size_type prefix_count{};
-					archive(segment);
-					archive(prefix_count);
-					
-					dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-					
-					lb::dispatch_group_async_fn(
-						group,
-						concurrent_queue,
-						[
-							this,
-							sema,
-							seg_idx = i,
-							segment = std::move(segment),
-							prefix_count,
-							&b_positions,
-							&e_positions,
-							&status,
-							&error_os
-						](){
-							dispatch_semaphore_guard guard(sema);
-							
-							size_type ll{};
-							size_type rr{m_csa.size()};
-							size_type res{};
-							for (auto const [i, cc] : rsv::enumerate(segment))
-							{
-								// The CSA is constructed from the reverse of the text, so we can forward-search using backward_search.
-								res = sdsl::backward_search(m_csa, ll, rr, cc, ll, rr);
+					fg::length_type segment_count{};
+					archive(cereal::make_size_tag(segment_count));
+					for (fg::length_type j(0); j < segment_count; ++j)
+					{
+						fg::length_type prefix_count{};
+						std::string segment;
+						archive(prefix_count);
+						archive(segment);
 						
-								if (0 == res)
+						dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+						
+						lb::dispatch_group_async_fn(
+							group,
+							concurrent_queue,
+							[
+								this,
+								sema,
+								seg_idx,
+								segment = std::move(segment),
+								prefix_count,
+								&b_positions,
+								&e_positions,
+								&status,
+								&error_os
+							](){
+								dispatch_semaphore_guard guard(sema);
+							
+								size_type ll{};
+								size_type rr{m_csa.size()};
+								size_type res{};
+								for (auto const [i, cc] : rsv::enumerate(segment))
 								{
-									synchronize_ostream(error_os) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << i << " of segment " << seg_idx << ": “" << segment << "”.\n";
+									// The CSA is constructed from the reverse of the text, so we can forward-search using backward_search.
+									res = sdsl::backward_search(m_csa, ll, rr, cc, ll, rr);
+						
+									if (0 == res)
+									{
+										synchronize_ostream(error_os) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << i << " of segment " << seg_idx << ": “" << segment << "”.\n";
+										status.store(false, std::memory_order_relaxed);
+										return;
+									}
+								}
+					
+								if (1 + prefix_count != res)
+								{
+									synchronize_ostream(error_os) << "ERROR: got " << res << " occurrences while " << (1 + prefix_count) << " were expected when searching for segment " << seg_idx << ": “" << segment << "”.\n";
 									status.store(false, std::memory_order_relaxed);
 									return;
 								}
-							}
-					
-							if (1 + prefix_count != res)
-							{
-								synchronize_ostream(error_os) << "ERROR: got " << res << " occurrences while " << (1 + prefix_count) << " were expected when searching for segment " << seg_idx << ": “" << segment << "”.\n";
-								status.store(false, std::memory_order_relaxed);
-								return;
-							}
 						
-							// Set the values.
-							{
-								auto const b_res(b_positions.fetch_or(ll, 0x1, std::memory_order_relaxed));
-								auto const e_res(e_positions.fetch_or(rr, 0x1, std::memory_order_relaxed));
-							
-								if (b_res)
+								// Set the values.
 								{
-									synchronize_ostream(error_os) << "ERROR: position " << ll << " in B already set.\n";
-									status.store(false, std::memory_order_relaxed);
-								}
+									auto const b_res(b_positions.fetch_or(ll, 0x1, std::memory_order_relaxed));
+									auto const e_res(e_positions.fetch_or(rr, 0x1, std::memory_order_relaxed));
 							
-								if (e_res)
-								{
-									synchronize_ostream(error_os) << "ERROR: position " << rr << " in E already set.\n";
-									status.store(false, std::memory_order_relaxed);
+									if (b_res)
+									{
+										synchronize_ostream(error_os) << "ERROR: position " << ll << " in B already set.\n";
+										status.store(false, std::memory_order_relaxed);
+									}
+							
+									if (e_res)
+									{
+										synchronize_ostream(error_os) << "ERROR: position " << rr << " in E already set.\n";
+										status.store(false, std::memory_order_relaxed);
+									}
 								}
 							}
-						}
-					);
+						);
 					
-					if (status.load(std::memory_order_acquire))
-						break;
+						if (status.load(std::memory_order_acquire))
+							break;
+						
+						++seg_idx;
+					}
 				}
 				
 				// Wait until the tasks are finished before releasing anything.

@@ -3,13 +3,19 @@
 
 package		"build-founder-graph-index"
 purpose		"Build a founder graph index from optimized segmentation"
-usage		"build_founder_graph_index --input=input.txt > input.cst"
-description	"Generates an indexable text from optimized founder graph segmentation and builds a founder graph index from that."
+description	"Generates an indexable text from optimized founder graph segmentation and builds a founder graph index from that. For generating indexable text, compressed input needs to be in bgzip format, while for generating the actual index, gzip will suffice."
 
-defmode "Generate indexable text"		modedesc = "Generate the indexable text"
-modeoption	"generate-indexable-text"	G	"Generate the indexable text"									mode = "Generate indexable text"	required
-modeoption	"sequence-list"				s	"Sequence list path"			string	typestr = "filename"	mode = "Generate indexable text"	required
-modeoption	"segmentation"				e	"Optimized segmentation path"	string	typestr = "filename"	mode = "Generate indexable text"	required
-modeoption	"bgzip-input"				z	"Sequences are gzipped"											mode = "Generate indexable text"	optional
-modeoption	"block-contents"			b	"Output block contents as TSV only"								mode = "Generate indexable text"	optional
-modeoption	"omit-segments"				o	"Omit segments when outputting block contents"					mode = "Generate indexable text"	optional
+option		"gzip-input"				z	"Input is (b)gzipped"							flag	off
+
+defmode "Generate indexable texts"		modedesc = "Generate the indexable texts"
+modeoption	"generate-indexable-texts"	T	"Generate the indexable texts"													mode = "Generate indexable texts"		required
+modeoption	"sequence-list"				s	"Sequence list path"							string	typestr = "filename"	mode = "Generate indexable texts"		required
+modeoption	"segmentation"				e	"Optimized segmentation path"					string	typestr = "filename"	mode = "Generate indexable texts"		required
+modeoption	"block-contents"			b	"Output block contents"															mode = "Generate indexable texts"		optional
+modeoption	"tsv"						-	"Output as TSV"																	mode = "Generate indexable texts"		optional
+modeoption	"omit-segments"				-	"Omit segments when outputting block contents"									mode = "Generate indexable texts"		optional
+
+defmode "Generate founder graph index"	modedesc = "Generate a founder graph index from the indexable text and block contents"
+modeoption	"generate-index"			I	"Generate a founder graph index"												mode = "Generate founder graph index"	required
+modeoption	"text-path"					t	"Indexable text path"							string	typestr = "filename"	mode = "Generate founder graph index"	required
+modeoption	"block-contents-path"		l	"Block contents (as binary) path"				string	typestr = "filename"	mode = "Generate founder graph index"	required

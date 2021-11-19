@@ -4,18 +4,22 @@
  */
 
 #include <cereal/archives/portable_binary.hpp>
+#include <cereal/types/string.hpp>
 #include <compare>
 #include <founder_graphs/basic_types.hh>
+#include <founder_graphs/founder_graph_index.hh>
 #include <founder_graphs/msa_reader.hh>
 #include <iostream>
 #include <libbio/file_handling.hh>
 #include <libbio/utility.hh>
+#include <range/v3/view/reverse.hpp>
 #include <set>
 #include <string>
 #include "cmdline.h"
 
 namespace fg	= founder_graphs;
 namespace lb	= libbio;
+namespace rsv	= ranges::views;
 
 
 namespace {
@@ -88,6 +92,117 @@ namespace {
 	typedef std::multimap <std::string, std::size_t, segment_cmp>	segment_buffer_type;
 	
 	
+	struct output_handler
+	{
+		virtual ~output_handler() {}
+		virtual bool needs_prefix_counts() const = 0;
+		virtual void output_header(fg::length_type const block_count) {}
+		virtual void output(std::size_t const segment_idx, segment_map const &segments) = 0;
+	};
+	
+	
+	class indexable_text_output_handler final : public output_handler
+	{
+	public:
+		bool needs_prefix_counts() const override { return false; }
+		
+		void output(std::size_t const segment_idx, segment_map const &segments) override
+		{
+			// Output.
+			for (auto const &kv : segments)
+				std::cout << '#' << rsv::reverse(kv.first);
+		}
+	};
+	
+	
+	class block_content_output_handler : public output_handler
+	{
+	protected:
+		bool m_should_omit_segments{};
+		
+	public:
+		block_content_output_handler() = default;
+		
+		block_content_output_handler(bool const should_omit_segments):
+			m_should_omit_segments(should_omit_segments)
+		{
+		}
+		
+		bool needs_prefix_counts() const final { return true; }
+	};
+	
+	
+	class block_content_tsv_output_handler final : public block_content_output_handler
+	{
+	public:
+		using block_content_output_handler::block_content_output_handler;
+		
+		void output_header(fg::length_type const block_count) override
+		{
+			// Output segments one per line with prefix counts.
+			if (m_should_omit_segments)
+				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tSEGMENT_LENGTH\n";
+			else
+				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tSEGMENT\n";
+		}
+		
+		void output(std::size_t const block_idx, segment_map const &segments) override
+		{
+			if (m_should_omit_segments)
+			{
+				for (auto const &kv : segments)
+					std::cout << block_idx << '\t' << kv.second << '\t' << kv.first.size() << '\n';
+			}
+			else
+			{
+				for (auto const &kv : segments)
+					std::cout << block_idx << '\t' << kv.second << '\t' << kv.first << '\n';
+			}
+		}
+	};
+	
+	
+	class block_content_binary_output_handler final : public block_content_output_handler
+	{
+	protected:
+		cereal::PortableBinaryOutputArchive m_archive{std::cout};
+			
+	public:
+		using block_content_output_handler::block_content_output_handler;
+		
+		void output_header(fg::length_type const block_count) override
+		{
+			m_archive(cereal::make_size_tag(block_count));
+		}
+		
+		void output(std::size_t const block_idx, segment_map const &segments) override
+		{
+			fg::length_type segment_count(segments.size());
+			m_archive(cereal::make_size_tag(segment_count));
+			
+			if (m_should_omit_segments)
+			{
+				for (auto const &kv : segments)
+				{
+					fg::length_type prefix_count(kv.second);
+					fg::length_type segment_length(kv.first.size());
+					m_archive(prefix_count);
+					m_archive(segment_length);
+				}
+			}
+			else
+			{
+				for (auto const &kv : segments)
+				{
+					fg::length_type prefix_count(kv.second);
+					m_archive(prefix_count);
+					m_archive(kv.first);
+				}
+			}
+		}
+	};
+	
+	
 	// For assigning std::span <char> to std::string.
 	void remove_gaps_and_assign(std::span <char> const src, std::string &dst)
 	{
@@ -102,42 +217,41 @@ namespace {
 		fg::msa_reader &reader,
 		std::size_t const lb,
 		std::size_t const rb,
-		segment_map &concatenated_segments,
+		segment_map &segments,
 		segment_buffer_type &segment_buffer,
-		std::size_t const segment_idx, 			// Segment or segment pair index.
-		bool const should_count_prefixes,
-		bool const should_omit_segments
+		std::size_t const segment_idx,			// Segment or segment pair index.
+		output_handler &handler
 	)
 	{
 		// Move the nodes to the buffer.
-		while (!concatenated_segments.empty())
+		while (!segments.empty())
 		{
-			auto nh(concatenated_segments.extract(concatenated_segments.begin()));
+			auto nh(segments.extract(segments.begin()));
 			nh.key().clear();
 			segment_buffer.insert(segment_buffer.end(), std::move(nh));
 		}
 		
 		// Currently fill_buffer() returns after the callback has finished.
-		reader.fill_buffer(lb, rb, [&concatenated_segments, &segment_buffer](fg::msa_reader::span_vector const &spans){
+		reader.fill_buffer(lb, rb, [&segments, &segment_buffer](fg::msa_reader::span_vector const &spans){
 			for (auto const &span : spans)
 			{
 				// Check if this segment has already been handled.
-				auto const it(concatenated_segments.find(span));
-				if (concatenated_segments.end() == it)
+				auto const it(segments.find(span));
+				if (segments.end() == it)
 				{
 					// New segment, add to the set.
 					if (segment_buffer.empty())
 					{
 						std::string key;
 						remove_gaps_and_assign(span, key);
-						concatenated_segments.emplace(std::move(key), 0);
+						segments.emplace(std::move(key), 0);
 					}
 					else
 					{
 						auto nh(segment_buffer.extract(segment_buffer.begin()));
 						remove_gaps_and_assign(span, nh.key());
 						nh.mapped() = 0;
-						concatenated_segments.insert(std::move(nh));
+						segments.insert(std::move(nh));
 					}
 				}
 			}
@@ -145,13 +259,13 @@ namespace {
 			return true;
 		});
 		
-		if (should_count_prefixes)
+		if (handler.needs_prefix_counts())
 		{
 			// Count the prefixes and output.
 			// Use a naïve algorithm since the amount of data is expected to be small,
 			// i.e. just check if a segment is a prefix of the succeeding ones in the lexicographic order.
-			auto it(concatenated_segments.begin());
-			auto const end(concatenated_segments.end());
+			auto it(segments.begin());
+			auto const end(segments.end());
 			while (it != end)
 			{
 				libbio_assert_eq(0, it->second);
@@ -163,24 +277,9 @@ namespace {
 				}
 				++it;
 			}
-			
-			if (should_omit_segments)
-			{
-				for (auto const &kv : concatenated_segments)
-					std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first.size() << '\n';
-			}
-			else
-			{
-				for (auto const &kv : concatenated_segments)
-					std::cout << segment_idx << '\t' << kv.second << '\t' << kv.first << '\n';
-			}
 		}
-		else
-		{
-			// Output.
-			for (auto const &kv : concatenated_segments)
-				std::cout << '#' << kv.first;
-		}
+		
+		handler.output(segment_idx, segments);
 	}
 	
 	
@@ -188,9 +287,8 @@ namespace {
 		fg::msa_reader &reader,
 		char const *sequence_list_path,
 		char const *segmentation_path,
-		bool const input_is_gzipped,
-		bool const should_output_block_contents_only,
-		bool const should_omit_segments
+		output_handler &handler,
+		bool const should_output_block_contents_only
 	)
 	{
 		// Open the segmentation.
@@ -220,23 +318,20 @@ namespace {
 		segment_map concatenated_segments;
 		segment_buffer_type segment_buffer;
 		
+		handler.output_header(block_count);
+		
 		if (should_output_block_contents_only)
 		{
-			// Output segments one per line with prefix counts.
-			if (should_omit_segments)
-				std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL_LENGTH\n";
-			else
-				std::cout << "SEGMENT_INDEX\tPREFIX_COUNT\tLABEL\n";
 			fg::length_type lb{};
 			for (fg::length_type i(0); i < block_count; ++i)
 			{
 				// Read the next right bound.
 				fg::length_type rb{};
 				archive(rb);
-			
+				
 				lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
-				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, true, should_omit_segments);
-			
+				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, handler);
+				
 				// Update the pointer.
 				lb = rb;
 			}
@@ -257,17 +352,48 @@ namespace {
 					// Read the next right bound.
 					fg::length_type rb{};
 					archive(rb);
-				
-					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, false, false);
-				
+					
+					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, handler);
+					
 					// Update the pointers.
 					lb = mid;
 					mid = rb;
 				}
 			}
 		}
-		
-		std::cout << std::flush;
+	}
+	
+	
+	void generate_indexable_text(
+		fg::msa_reader &reader,
+		char const *sequence_list_path,
+		char const *segmentation_path,
+		bool const block_contents_given,
+		bool const tsv_given,
+		bool const omit_segments_given
+	)
+	{
+		if (block_contents_given)
+		{
+			if (tsv_given)
+			{
+				block_content_tsv_output_handler handler(omit_segments_given);
+				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+			}
+			else
+			{
+				block_content_binary_output_handler handler(omit_segments_given);
+				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+			}
+		}
+		else
+		{
+			if (tsv_given || omit_segments_given)
+				std::cerr << "WARNING: --tsv and --omit-segments do not have an effect when outputting text for BWT indexing.\n";
+			
+			indexable_text_output_handler handler;
+			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+		}
 	}
 }
 
@@ -285,17 +411,40 @@ int main(int argc, char **argv)
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cin.tie(nullptr);					// We don't require any input from the user.
 	
-	if (args_info.generate_indexable_text_given)
+	if (args_info.generate_indexable_texts_given)
 	{
-		if (args_info.bgzip_input_given)
+		if (args_info.gzip_input_given)
 		{
 			fg::bgzip_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given, args_info.omit_segments_given);
+			generate_indexable_text(
+				reader,
+				args_info.sequence_list_arg,
+				args_info.segmentation_arg,
+				args_info.block_contents_given,
+				args_info.tsv_given,
+				args_info.omit_segments_given
+			);
 		}
 		else
 		{
 			fg::text_msa_reader reader;
-			generate_indexable_text(reader, args_info.sequence_list_arg, args_info.segmentation_arg, args_info.bgzip_input_given, args_info.block_contents_given, args_info.omit_segments_given);
+			generate_indexable_text(
+				reader,
+				args_info.sequence_list_arg,
+				args_info.segmentation_arg,
+				args_info.block_contents_given,
+				args_info.tsv_given,
+				args_info.omit_segments_given
+			);
+		}
+	}
+	else if (args_info.generate_index_given)
+	{
+		fg::founder_graph_index founder_index;
+		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, std::cerr))
+		{
+			cereal::PortableBinaryOutputArchive archive{std::cout};
+			archive(founder_index);
 		}
 	}
 	else
