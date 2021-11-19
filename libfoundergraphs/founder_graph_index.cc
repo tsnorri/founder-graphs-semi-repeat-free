@@ -30,6 +30,29 @@ namespace {
 		libbio_assert_eq(dst_vec.size() / 64, src_vec.word_size());
 		std::copy(src_vec.word_begin(), src_vec.word_end(), dst);
 	}
+	
+	
+	class dispatch_semaphore_guard
+	{
+	protected:
+		dispatch_semaphore_t	m_semaphore{};
+		
+	public:
+		dispatch_semaphore_guard(dispatch_semaphore_t semaphore):
+			m_semaphore(semaphore)
+		{
+		}
+		
+		dispatch_semaphore_guard(dispatch_semaphore_guard const &) = delete;
+		
+		dispatch_semaphore_guard &operator=(dispatch_semaphore_guard const &) = delete;
+		
+		~dispatch_semaphore_guard()
+		{
+			libbio_assert(m_semaphore);
+			dispatch_semaphore_signal(m_semaphore);
+		}
+	};
 }
 
 
@@ -51,7 +74,9 @@ namespace founder_graphs {
 		sdsl::construct(m_csa, text_path, 1);
 		
 		lb::dispatch_ptr <dispatch_group_t> group_ptr(dispatch_group_create());
+		lb::dispatch_ptr <dispatch_semaphore_t> sema_ptr(dispatch_semaphore_create(256)); // Limit the number of segments read in the current thread.
 		auto group(*group_ptr);
+		auto sema(*sema_ptr);
 		auto concurrent_queue(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));
 		
 		// Read the segments.
@@ -63,7 +88,7 @@ namespace founder_graphs {
 			
 			// Since the positions in B and E are expected to be at least somewhat far apart and
 			// setting the values does not require specific order, just consistency, we use
-			// atomic bit vectors instead of a serial callback queue. This should be fine b.c.
+			// atomic bit vectors instead of a serial callback queue. This should be (mostly) fine b.c.
 			// cache line size on x86-64 is 64 bytes and on M1 128 bytes.
 			lb::atomic_bit_vector b_positions(size);
 			lb::atomic_bit_vector e_positions(size);
@@ -80,11 +105,14 @@ namespace founder_graphs {
 					archive(segment);
 					archive(prefix_count);
 					
+					dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+					
 					lb::dispatch_group_async_fn(
 						group,
 						concurrent_queue,
 						[
 							this,
+							sema,
 							seg_idx = i,
 							segment = std::move(segment),
 							prefix_count,
@@ -93,6 +121,8 @@ namespace founder_graphs {
 							&status,
 							&error_os
 						](){
+							dispatch_semaphore_guard guard(sema);
+							
 							size_type ll{};
 							size_type rr{m_csa.size()};
 							size_type res{};
@@ -141,7 +171,8 @@ namespace founder_graphs {
 				}
 				
 				// Wait until the tasks are finished before releasing anything.
-				// (I think the blocks retain the associated queue, though, so we might be able to just return.)
+				// (I think the blocks retain the associated queue, though, so we might be able to just return.
+				// The semaphore does need to get incremented to its old value before that.)
 				dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
 				
 				if (!status)
