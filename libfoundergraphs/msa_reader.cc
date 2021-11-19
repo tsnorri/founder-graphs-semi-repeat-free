@@ -127,7 +127,10 @@ namespace founder_graphs {
 		}
 		
 		for (auto &&[buffer, span] : rsv::zip(m_buffers, m_spans))
+		{
+			libbio_assert_lte(range_len, buffer.size());
 			span = span_type(buffer.data(), range_len);
+		}
 		
 		return cb(m_spans);
 	}

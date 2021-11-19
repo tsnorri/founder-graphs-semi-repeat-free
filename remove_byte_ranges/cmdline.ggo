@@ -1,0 +1,10 @@
+# Copyright (c) 2021 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"remove_byte_ranges"
+purpose		"Tool for removing given byte ranges from input"
+usage		"remove_byte_ranges -R ranges.tsv < input > output"
+description	"Reference genomes can contain long unknown or unspecified regions, which might not be useful for e.g. text indexing purposes."
+
+option	"input"			i	"Input path"			string	typestr = "filename"	optional
+option	"range-list"	R	"Range list path"		string	typestr = "filename"	required
