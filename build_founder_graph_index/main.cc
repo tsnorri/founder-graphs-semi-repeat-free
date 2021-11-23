@@ -12,6 +12,7 @@
 #include <iostream>
 #include <libbio/file_handling.hh>
 #include <libbio/utility.hh>
+#include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/reverse.hpp>
 #include <set>
 #include <string>
@@ -88,8 +89,32 @@ namespace {
 	};
 	
 	
-	typedef std::map <std::string, std::size_t, segment_cmp>		segment_map;
-	typedef std::multimap <std::string, std::size_t, segment_cmp>	segment_buffer_type;
+	struct segment_properties
+	{
+		std::size_t segment_number{SIZE_MAX};
+		std::size_t count{};
+		std::size_t prefixes{};
+		std::size_t edges{};
+		
+		segment_properties() = default;
+		
+		segment_properties(
+			std::size_t const segment_number_,
+			std::size_t const count_,
+			std::size_t const prefixes_,
+			std::size_t const edges_
+		):
+			segment_number(segment_number_),
+			count(count_),
+			prefixes(prefixes_),
+			edges(edges_)
+		{
+		}
+	};
+	
+	
+	typedef std::map <std::string, segment_properties, segment_cmp>			segment_map;
+	typedef std::multimap <std::string, segment_properties, segment_cmp>	segment_buffer_type;
 	
 	
 	class output_handler
@@ -104,9 +129,9 @@ namespace {
 		}
 
 		virtual ~output_handler() {}
-		virtual bool needs_prefix_counts() const = 0;
+		virtual bool needs_properties() const = 0;
 		virtual void output_header(fg::length_type const block_count) {}
-		virtual void output(std::size_t const segment_idx, segment_map const &segments) = 0;
+		virtual void output(std::size_t const block_idx, segment_map const &segments) = 0;
 	};
 	
 	
@@ -115,13 +140,13 @@ namespace {
 	public:
 		using output_handler::output_handler;
 
-		bool needs_prefix_counts() const override { return false; }
+		bool needs_properties() const override { return false; }
 		
-		void output(std::size_t const segment_idx, segment_map const &segments) override
+		void output(std::size_t const block_idx, segment_map const &segments) override
 		{
 			if (m_should_skip_output)
 				return;
-
+			
 			// Output.
 			for (auto const &kv : segments)
 			{
@@ -144,7 +169,7 @@ namespace {
 		{
 		}
 		
-		bool needs_prefix_counts() const final { return true; }
+		bool needs_properties() const final { return true; }
 	};
 	
 	
@@ -160,9 +185,9 @@ namespace {
 
 			// Output segments one per line with prefix counts.
 			if (m_should_omit_segments)
-				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tSEGMENT_LENGTH\n";
+				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT_LENGTH\n";
 			else
-				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tSEGMENT\n";
+				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT\n";
 		}
 		
 		void output(std::size_t const block_idx, segment_map const &segments) override
@@ -173,12 +198,12 @@ namespace {
 			if (m_should_omit_segments)
 			{
 				for (auto const &kv : segments)
-					std::cout << block_idx << '\t' << kv.second << '\t' << kv.first.size() << '\n';
+					std::cout << block_idx << '\t' << kv.second.prefixes << '\t' << kv.second.edges << '\t' << kv.first.size() << '\n';
 			}
 			else
 			{
 				for (auto const &kv : segments)
-					std::cout << block_idx << '\t' << kv.second << '\t' << kv.first << '\n';
+					std::cout << block_idx << '\t' << kv.second.prefixes << '\t' << kv.second.edges << '\t' << kv.first << '\n';
 			}
 		}
 	};
@@ -212,9 +237,11 @@ namespace {
 			{
 				for (auto const &kv : segments)
 				{
-					fg::length_type prefix_count(kv.second);
+					fg::length_type prefix_count(kv.second.prefixes);
+					fg::length_type edge_count(kv.second.edges);
 					fg::length_type segment_length(kv.first.size());
 					m_archive(prefix_count);
+					m_archive(edge_count);
 					m_archive(segment_length);
 				}
 			}
@@ -222,8 +249,10 @@ namespace {
 			{
 				for (auto const &kv : segments)
 				{
-					fg::length_type prefix_count(kv.second);
+					fg::length_type prefix_count(kv.second.prefixes);
+					fg::length_type edge_count(kv.second.edges);
 					m_archive(prefix_count);
+					m_archive(edge_count);
 					m_archive(kv.first);
 				}
 			}
@@ -245,12 +274,18 @@ namespace {
 		fg::msa_reader &reader,
 		std::size_t const lb,
 		std::size_t const rb,
+		output_handler const &handler,
 		segment_map &segments,
 		segment_buffer_type &segment_buffer,
-		std::size_t const segment_idx,			// Segment or segment pair index.
-		output_handler &handler
+		std::vector <std::size_t> &segment_numbers_by_seq_idx,
+		std::vector <segment_map::mapped_type *> &segments_by_segment_number
 	)
 	{
+		// Determine the distinct segments in a block and number them.
+		// The segments are placed in the segment map and their numbers
+		// by sequence index in segment_numbers_by_seq_idx. The intention is that
+		// the in-edge and out-edge counts can be determined from the output.
+		
 		// Move the nodes to the buffer.
 		while (!segments.empty())
 		{
@@ -259,55 +294,95 @@ namespace {
 			segment_buffer.insert(segment_buffer.end(), std::move(nh));
 		}
 		
+		// Fill for extra safety.
+		std::fill(segment_numbers_by_seq_idx.begin(), segment_numbers_by_seq_idx.end(), SIZE_MAX);
+		
 		// Currently fill_buffer() returns after the callback has finished.
-		reader.fill_buffer(lb, rb, [&segments, &segment_buffer](fg::msa_reader::span_vector const &spans){
-			for (auto const &span : spans)
-			{
-				// Check if this segment has already been handled.
-				auto const it(segments.find(span));
-				if (segments.end() == it)
+		reader.fill_buffer(
+			lb,
+			rb,
+			[
+				&segments,
+				&segment_buffer,
+				&segment_numbers_by_seq_idx,
+				&segments_by_segment_number
+			](fg::msa_reader::span_vector const &spans){
+				
+				std::size_t segment_counter{};
+				segments_by_segment_number.clear();
+				
+				libbio_assert_eq(spans.size(), segment_numbers_by_seq_idx.size());
+				for (auto &&[seq_idx, tup] : rsv::enumerate(rsv::zip(spans, segment_numbers_by_seq_idx)))
 				{
-					// New segment, add to the set.
-					if (segment_buffer.empty())
+					auto &[span, segment_number] = tup;
+					
+					// Check if this segment has already been handled.
+					auto const it(segments.find(span));
+					if (segments.end() == it)
 					{
-						std::string key;
-						remove_gaps_and_assign(span, key);
-						segments.emplace(std::move(key), 0);
+						// New segment, add to the set.
+						if (segment_buffer.empty())
+						{
+							std::string key;
+							remove_gaps_and_assign(span, key);
+							auto const res(segments.emplace(
+								std::piecewise_construct,
+								std::forward_as_tuple(std::move(key)),
+								std::forward_as_tuple(segment_counter, 1, 0, 0)
+							));
+							
+							libbio_assert(res.second);
+							auto &kv(*res.first);
+							segments_by_segment_number.emplace_back(&kv.second);
+						}
+						else
+						{
+							auto nh(segment_buffer.extract(segment_buffer.begin()));
+							remove_gaps_and_assign(span, nh.key());
+							nh.mapped() = segment_properties(segment_counter, 1, 0, 0);
+							auto const res(segments.insert(std::move(nh)));
+							
+							libbio_assert(res.inserted);
+							auto &kv(*res.position);
+							segments_by_segment_number.emplace_back(&kv.second);
+						}
+						
+						++segment_counter;
 					}
 					else
 					{
-						auto nh(segment_buffer.extract(segment_buffer.begin()));
-						remove_gaps_and_assign(span, nh.key());
-						nh.mapped() = 0;
-						segments.insert(std::move(nh));
+						// Existing segment.
+						auto &properties(it->second);
+						++properties.count;
+						properties.segment_number = segment_number;
 					}
 				}
+				
+				libbio_assert_eq(segment_counter, segments_by_segment_number.size());
+				
+				return true;
 			}
-			
-			return true;
-		});
+		);
 		
-		if (handler.needs_prefix_counts())
+		if (handler.needs_properties())
 		{
-			// Count the prefixes and output.
+			// Count the prefixes.
 			// Use a naïve algorithm since the amount of data is expected to be small,
 			// i.e. just check if a segment is a prefix of the succeeding ones in the lexicographic order.
 			auto it(segments.begin());
 			auto const end(segments.end());
 			while (it != end)
 			{
-				libbio_assert_eq(0, it->second);
+				libbio_assert_eq(0, it->second.prefixes);
 				auto next_it(std::next(it));
 				while (next_it != end && next_it->first.starts_with(it->first))
 				{
-					++it->second;
+					++it->second.prefixes;
 					++next_it;
 				}
 				++it;
 			}
 		}
-		
-		handler.output(segment_idx, segments);
 	}
 	
 	
@@ -316,7 +391,7 @@ namespace {
 		char const *sequence_list_path,
 		char const *segmentation_path,
 		output_handler &handler,
-		bool const should_output_block_contents_only
+		bool const should_output_block_contents
 	)
 	{
 		// Open the segmentation.
@@ -343,31 +418,102 @@ namespace {
 		fg::length_type block_count{};
 		archive(cereal::make_size_tag(block_count));
 		
-		segment_map concatenated_segments;
 		segment_buffer_type segment_buffer;
 		
 		handler.output_header(block_count);
 		
-		if (should_output_block_contents_only)
+		if (should_output_block_contents)
 		{
+			segment_map lhs_segments;
+			segment_map rhs_segments;
+			std::vector <std::size_t> lhs_segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
+			std::vector <std::size_t> rhs_segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
+			std::vector <segment_map::mapped_type *> lhs_segments_by_segment_number;
+			std::vector <segment_map::mapped_type *> rhs_segments_by_segment_number;
+			std::set <std::pair <std::size_t, std::size_t>> seen_edges;
+			
 			fg::length_type lb{};
-			for (fg::length_type i(0); i < block_count; ++i)
+			if (block_count)
 			{
-				// Read the next right bound.
+				lb::log_time(std::cerr) << "Block 1 / " << (block_count - 1) << "…\n";
+				
 				fg::length_type rb{};
 				archive(rb);
 				
-				lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
-				handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i, handler);
-				
-				// Update the pointer.
+				handle_block_range(
+					reader,
+					lb,
+					rb,
+					handler,
+					lhs_segments,
+					segment_buffer,
+					lhs_segment_numbers_by_seq_idx,
+					lhs_segments_by_segment_number
+				);
+					
 				lb = rb;
+				
+				for (fg::length_type i(1); i < block_count; ++i)
+				{
+					lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << (block_count - 1) << "…\n";
+					
+					// Read the next right bound.
+					archive(rb);
+					
+					handle_block_range(
+						reader,
+						lb,
+						rb,
+						handler,
+						rhs_segments,
+						segment_buffer,
+						rhs_segment_numbers_by_seq_idx,
+						rhs_segments_by_segment_number
+					);
+					
+					// Count the distinct edges.
+					seen_edges.clear();
+					for (auto const &[lhs, rhs] : rsv::zip(lhs_segment_numbers_by_seq_idx, rhs_segment_numbers_by_seq_idx))
+						seen_edges.emplace(lhs, rhs);
+					
+					for (auto const &[lhs, rhs] : seen_edges)
+					{
+						libbio_assert_neq(lhs, SIZE_MAX);
+						libbio_assert_neq(rhs, SIZE_MAX);
+						auto &lhs_seg(*lhs_segments_by_segment_number[lhs]);
+						auto &rhs_seg(*rhs_segments_by_segment_number[rhs]);
+						++lhs_seg.edges; // Out-edges
+						++rhs_seg.edges; // In-edges
+					}
+					
+					// Output.
+					handler.output(i - 1, lhs_segments);
+					
+					// Update the pointers.
+					lb = rb;
+					
+					{
+						using std::swap;
+						swap(lhs_segments, rhs_segments);
+						swap(lhs_segment_numbers_by_seq_idx, rhs_segment_numbers_by_seq_idx);
+						swap(lhs_segments_by_segment_number, rhs_segments_by_segment_number);
+					}
+				}
+				
+				// Output the final block.
+				handler.output(block_count - 1, lhs_segments);
 			}
 		}
 		else
 		{
 			// Output a text that consists of concatenated pairs of segments separated by ‘#’ characters.
 			// Maintain two ranges, [lb, mid) and [mid, rb).
+			
+			segment_map segments;
+			// These two are not used here.
+			std::vector <std::size_t> segment_numbers_by_seq_idx;
+			std::vector <segment_map::mapped_type *> segments_by_segment_number;
+			
 			fg::length_type lb{};
 			if (block_count)
 			{
@@ -376,12 +522,22 @@ namespace {
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
 					lb::log_time(std::cerr) << "Block " << i << '/' << (block_count - 1) << "…\n";
-
+					
 					// Read the next right bound.
 					fg::length_type rb{};
 					archive(rb);
 					
-					handle_block_range(reader, lb, rb, concatenated_segments, segment_buffer, i - 1, handler);
+					handle_block_range(
+						reader,
+						lb,
+						rb,
+						handler,
+						segments,
+						segment_buffer,
+						segment_numbers_by_seq_idx,
+						segments_by_segment_number
+					);
+					handler.output(i - 1, segments);
 					
 					// Update the pointers.
 					lb = mid;
@@ -424,6 +580,49 @@ namespace {
 			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 		}
 	}
+	
+	
+	std::ostream &synchronize_ostream(std::ostream &stream)
+	{
+		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
+		return stream;
+	}
+	
+	
+	struct founder_graph_index_construction_delegate : public fg::founder_graph_index_construction_delegate
+	{
+		void zero_occurrences_for_segment(
+			fg::length_type const block_idx,
+			fg::length_type const seg_idx,
+			std::string const &segment,
+			char const cc,
+			fg::length_type const pos
+		) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << pos << " of segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+		}
+		
+		void unexpected_number_of_occurrences_for_segment(
+			fg::length_type const block_idx,
+			fg::length_type const seg_idx,
+			std::string const &segment,
+			fg::length_type const expected_count,
+			fg::length_type const actual_count
+		) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: got " << actual_count << " occurrences while " << expected_count << " were expected when searching for segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+		}
+		
+		void position_in_b_already_set(fg::length_type const pos) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in B already set.\n";
+		}
+		
+		void position_in_e_already_set(fg::length_type const pos) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in E already set.\n";
+		}
+	};
 }
 
 
@@ -472,7 +671,8 @@ int main(int argc, char **argv)
 	else if (args_info.generate_index_given)
 	{
 		fg::founder_graph_index founder_index;
-		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, std::cerr))
+		founder_graph_index_construction_delegate delegate;
+		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, delegate))
 		{
 			cereal::PortableBinaryOutputArchive archive{std::cout};
 			archive(founder_index);

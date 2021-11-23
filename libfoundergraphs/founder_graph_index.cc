@@ -19,13 +19,6 @@ namespace rsv	= ranges::views;
 
 namespace {
 	
-	std::ostream &synchronize_ostream(std::ostream &stream)
-	{
-		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
-		return stream;
-	}
-	
-	
 	void copy_words(lb::atomic_bit_vector const &src_vec, sdsl::bit_vector &dst_vec)
 	{
 		auto *dst(dst_vec.data());
@@ -61,7 +54,11 @@ namespace {
 
 namespace founder_graphs {
 	
-	bool founder_graph_index::construct(std::string const &text_path, std::string const &block_content_path, std::ostream &error_os)
+	bool founder_graph_index::construct(
+		std::string const &text_path,
+		std::string const &block_content_path,
+		founder_graph_index_construction_delegate &delegate
+	)
 	{
 		// Construct the founder graph index. We first use SDSL to construct the BWT index.
 		// Then we read the block contents (i.e. segments), try to locate them in the index
@@ -75,6 +72,7 @@ namespace founder_graphs {
 		//	fg::length_type			Number of segments in the current block.
 		//	Segments as follows:
 		//		fg::length_type		Number of segments (in the same block) the prefix of which this segment is.
+		//		fg::length_type		Number of edges that have the segment as an endpoint.
 		//		std::string			Segment
 		
 		lb::file_istream block_content_stream;
@@ -105,20 +103,46 @@ namespace founder_graphs {
 			for (auto &word : b_positions.word_range()) word.store(0, std::memory_order_relaxed);
 			for (auto &word : e_positions.word_range()) word.store(0, std::memory_order_relaxed);
 			
+			// Buffers for the current block.
+			std::vector <std::string> segments;
+			std::vector <fg::length_type> prefix_counts;
+			std::vector <fg::length_type> edge_count_csum;
+			
 			{
 				std::size_t seg_idx{};
 				fg::length_type block_count{};
 				archive(cereal::make_size_tag(block_count));
 				for (fg::length_type i(0); i < block_count; ++i)
 				{
+					// Read the segment count.
 					fg::length_type segment_count{};
 					archive(cereal::make_size_tag(segment_count));
+					
+					// Resize the buffers.
+					segments.clear();
+					prefix_counts.clear();
+					edge_count_csum.clear();
+					segments.resize(segment_count);
+					prefix_counts.resize(segment_count, 0);
+					edge_count_csum.resize(1 + segment_count, 0);
+					
+					// Read the current block and calculate the cumulative sum of edge counts.
 					for (fg::length_type j(0); j < segment_count; ++j)
 					{
-						fg::length_type prefix_count{};
-						std::string segment;
-						archive(prefix_count);
-						archive(segment);
+						archive(prefix_counts[j]);
+						archive(edge_count_csum[1 + j]);
+						archive(segments[j]);
+						edge_count_csum[1 + j] += edge_count_csum[j];
+					}
+					
+					// Determine the lexicographic range in a worker thread.
+					for (fg::length_type j(0); j < segment_count; ++j)
+					{
+						dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+						
+						auto const prefix_count(prefix_counts[j]);
+						auto const expected_occurrence_count(edge_count_csum[prefix_count + 1 + j] - edge_count_csum[j]);
+						auto &segment(segments[j]);
 						
 						dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 						
@@ -128,16 +152,17 @@ namespace founder_graphs {
 							[
 								this,
 								sema,
+								block_idx = i,
 								seg_idx,
 								segment = std::move(segment),
-								prefix_count,
+								expected_occurrence_count,
 								&b_positions,
 								&e_positions,
 								&status,
-								&error_os
+								&delegate
 							](){
 								dispatch_semaphore_guard guard(sema);
-							
+								
 								size_type ll{};
 								size_type rr{m_csa.size()};
 								size_type res{};
@@ -148,39 +173,39 @@ namespace founder_graphs {
 						
 									if (0 == res)
 									{
-										synchronize_ostream(error_os) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << i << " of segment " << seg_idx << ": “" << segment << "”.\n";
+										delegate.zero_occurrences_for_segment(block_idx, seg_idx, segment, cc, i);
 										status.store(false, std::memory_order_relaxed);
 										return;
 									}
 								}
-					
-								if (1 + prefix_count != res)
+								
+								if (expected_occurrence_count != res)
 								{
-									synchronize_ostream(error_os) << "ERROR: got " << res << " occurrences while " << (1 + prefix_count) << " were expected when searching for segment " << seg_idx << ": “" << segment << "”.\n";
+									delegate.unexpected_number_of_occurrences_for_segment(block_idx, seg_idx, segment, expected_occurrence_count, res);
 									status.store(false, std::memory_order_relaxed);
 									return;
 								}
-						
+								
 								// Set the values.
 								{
 									auto const b_res(b_positions.fetch_or(ll, 0x1, std::memory_order_relaxed));
 									auto const e_res(e_positions.fetch_or(rr, 0x1, std::memory_order_relaxed));
-							
+									
 									if (b_res)
 									{
-										synchronize_ostream(error_os) << "ERROR: position " << ll << " in B already set.\n";
+										delegate.position_in_b_already_set(ll);
 										status.store(false, std::memory_order_relaxed);
 									}
-							
+									
 									if (e_res)
 									{
-										synchronize_ostream(error_os) << "ERROR: position " << rr << " in E already set.\n";
+										delegate.position_in_b_already_set(rr);
 										status.store(false, std::memory_order_relaxed);
 									}
 								}
 							}
 						);
-					
+						
 						if (status.load(std::memory_order_acquire))
 							break;
 						
