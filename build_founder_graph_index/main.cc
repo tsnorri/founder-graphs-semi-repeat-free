@@ -318,6 +318,7 @@ namespace {
 							segments_by_segment_number.emplace_back(&kv.second);
 						}
 						
+						segment_number = segment_counter;
 						++segment_counter;
 					}
 					else
@@ -325,7 +326,7 @@ namespace {
 						// Existing segment.
 						auto &properties(it->second);
 						++properties.count;
-						properties.segment_number = segment_number;
+						segment_number = properties.segment_number;
 					}
 				}
 				
@@ -395,10 +396,11 @@ namespace {
 		
 		if (should_output_block_contents)
 		{
+			auto const seq_count(reader.handle_count());
 			segment_map lhs_segments;
 			segment_map rhs_segments;
-			std::vector <std::size_t> lhs_segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
-			std::vector <std::size_t> rhs_segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
+			std::vector <std::size_t> lhs_segment_numbers_by_seq_idx(seq_count, SIZE_MAX);
+			std::vector <std::size_t> rhs_segment_numbers_by_seq_idx(seq_count, SIZE_MAX);
 			std::vector <segment_map::mapped_type *> lhs_segments_by_segment_number;
 			std::vector <segment_map::mapped_type *> rhs_segments_by_segment_number;
 			std::set <std::pair <std::size_t, std::size_t>> seen_edges;
@@ -406,7 +408,7 @@ namespace {
 			fg::length_type lb{};
 			if (block_count)
 			{
-				lb::log_time(std::cerr) << "Block 1 / " << (block_count - 1) << "…\n";
+				lb::log_time(std::cerr) << "Block 1/" << (block_count - 1) << "…\n";
 				
 				fg::length_type rb{};
 				archive(rb);
