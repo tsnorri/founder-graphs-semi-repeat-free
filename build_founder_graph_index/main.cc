@@ -9,6 +9,7 @@
 #include <founder_graphs/basic_types.hh>
 #include <founder_graphs/founder_graph_index.hh>
 #include <founder_graphs/msa_reader.hh>
+#include <founder_graphs/segment_cmp.hh>
 #include <iostream>
 #include <libbio/file_handling.hh>
 #include <libbio/utility.hh>
@@ -24,70 +25,6 @@ namespace rsv	= ranges::views;
 
 
 namespace {
-	
-	// Compare a substring that originates from the input sequences (rhs) to one that has already
-	// been stored (lhs). We require that the stored sequences may not contain gap characters.
-	// To check for prefixes later, we (unfortunately) need lexicographic order instead of
-	// e.g. first ordering by length.
-	struct segment_cmp
-	{
-		typedef std::true_type is_transparent;
-		
-		// FIXME: I don’t know how a comparison operator that returns std::strong_ordering is supposed to be named.
-		template <typename t_char, std::size_t t_extent>
-		std::strong_ordering strong_order(std::string const &lhs, std::span <t_char, t_extent> const rhs) const
-		{
-			std::size_t li(0);
-			std::size_t ri(0);
-			std::size_t rhs_gap_count(0);
-			std::size_t const lc(lhs.size());
-			std::size_t const rc(rhs.size());
-			while (li < lc && ri < rc)
-			{
-				// Check for a gap.
-				while ('-' == rhs[ri])
-				{
-					++ri;
-					++rhs_gap_count;
-					if (ri == rc)
-						goto exit_loop;
-				}
-				
-				// Compare and check for equality.
-				auto const res(lhs[li] <=> rhs[ri]);
-				if (std::is_neq(res))
-					return res;
-				
-				// Continue.
-				++li;
-				++ri;
-			}
-			
-		exit_loop:
-			// The strings have equal prefixes. Compare the lengths.
-			return (lc <=> (rc - rhs_gap_count));
-		}
-		
-		// Less-than operators.
-		template <typename t_char, std::size_t t_extent>
-		bool operator()(std::string const &lhs, std::span <t_char, t_extent> const rhs) const
-		{
-			return std::is_lt(strong_order(lhs, rhs));
-		}
-		
-		template <typename t_char, std::size_t t_extent>
-		bool operator()(std::span <t_char, t_extent> const lhs, std::string const &rhs) const
-		{
-			return std::is_gt(strong_order(rhs, lhs));
-		}
-		
-		// For pairs of map keys.
-		bool operator()(std::string const &lhs, std::string const &rhs) const
-		{
-			return lhs < rhs;
-		}
-	};
-	
 	
 	struct segment_properties
 	{
@@ -113,8 +50,8 @@ namespace {
 	};
 	
 	
-	typedef std::map <std::string, segment_properties, segment_cmp>			segment_map;
-	typedef std::multimap <std::string, segment_properties, segment_cmp>	segment_buffer_type;
+	typedef std::map <std::string, segment_properties, fg::segment_cmp>			segment_map;
+	typedef std::multimap <std::string, segment_properties, fg::segment_cmp>	segment_buffer_type;
 	
 	
 	class output_handler

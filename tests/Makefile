@@ -11,7 +11,8 @@ LDFLAGS += -coverage
 OBJECTS	=	bgzip_reader.o \
 			bgzip_reverse_msa_reader.o \
 			count_distinct.o \
-			main.o
+			main.o \
+			segment_cmp.o
 
 TEST_FILES =	test-files/random-200000B.txt \
 				test-files/equal-length-1/1 \
