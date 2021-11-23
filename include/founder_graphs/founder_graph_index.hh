@@ -30,6 +30,31 @@ namespace founder_graphs::founder_graph_indices {
 
 namespace founder_graphs {
 	
+	struct founder_graph_index_construction_delegate
+	{
+		virtual ~founder_graph_index_construction_delegate() {}
+		
+		virtual void zero_occurrences_for_segment(
+			length_type const block_idx,
+			length_type const seg_idx,
+			std::string const &segment,
+			char const cc,
+			length_type const pos
+		) = 0;
+		
+		virtual void unexpected_number_of_occurrences_for_segment(
+			length_type const block_idx,
+			length_type const seg_idx,
+			std::string const &segment,
+			length_type const expected_count,
+			length_type const actual_count
+		) = 0;
+		
+		virtual void position_in_b_already_set(length_type const pos) = 0;
+		virtual void position_in_e_already_set(length_type const pos) = 0;
+	};
+	
+	
 	class founder_graph_index
 	{
 	public:
@@ -48,7 +73,11 @@ namespace founder_graphs {
 		select1_support_type	m_e_positions_select1_support;
 		
 	public:
-		bool construct(std::string const &text_path, std::string const &block_content_path, std::ostream &error_os);
+		bool construct(
+			std::string const &text_path,
+			std::string const &block_content_path,
+			founder_graph_index_construction_delegate &delegate
+		);
 		
 		template <typename t_archive>
 		void CEREAL_SAVE_FUNCTION_NAME(t_archive &archive) const;

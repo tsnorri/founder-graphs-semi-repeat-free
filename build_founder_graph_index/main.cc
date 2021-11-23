@@ -580,6 +580,49 @@ namespace {
 			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 		}
 	}
+	
+	
+	std::ostream &synchronize_ostream(std::ostream &stream)
+	{
+		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
+		return stream;
+	}
+	
+	
+	struct founder_graph_index_construction_delegate : public fg::founder_graph_index_construction_delegate
+	{
+		void zero_occurrences_for_segment(
+			fg::length_type const block_idx,
+			fg::length_type const seg_idx,
+			std::string const &segment,
+			char const cc,
+			fg::length_type const pos
+		) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << pos << " of segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+		}
+		
+		void unexpected_number_of_occurrences_for_segment(
+			fg::length_type const block_idx,
+			fg::length_type const seg_idx,
+			std::string const &segment,
+			fg::length_type const expected_count,
+			fg::length_type const actual_count
+		) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: got " << actual_count << " occurrences while " << expected_count << " were expected when searching for segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+		}
+		
+		void position_in_b_already_set(fg::length_type const pos) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in B already set.\n";
+		}
+		
+		void position_in_e_already_set(fg::length_type const pos) override
+		{
+			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in E already set.\n";
+		}
+	};
 }
 
 
@@ -628,7 +671,8 @@ int main(int argc, char **argv)
 	else if (args_info.generate_index_given)
 	{
 		fg::founder_graph_index founder_index;
-		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, std::cerr))
+		founder_graph_index_construction_delegate delegate;
+		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, delegate))
 		{
 			cereal::PortableBinaryOutputArchive archive{std::cout};
 			archive(founder_index);

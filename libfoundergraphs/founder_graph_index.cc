@@ -19,13 +19,6 @@ namespace rsv	= ranges::views;
 
 namespace {
 	
-	std::ostream &synchronize_ostream(std::ostream &stream)
-	{
-		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
-		return stream;
-	}
-	
-	
 	void copy_words(lb::atomic_bit_vector const &src_vec, sdsl::bit_vector &dst_vec)
 	{
 		auto *dst(dst_vec.data());
@@ -61,7 +54,11 @@ namespace {
 
 namespace founder_graphs {
 	
-	bool founder_graph_index::construct(std::string const &text_path, std::string const &block_content_path, std::ostream &error_os)
+	bool founder_graph_index::construct(
+		std::string const &text_path,
+		std::string const &block_content_path,
+		founder_graph_index_construction_delegate &delegate
+	)
 	{
 		// Construct the founder graph index. We first use SDSL to construct the BWT index.
 		// Then we read the block contents (i.e. segments), try to locate them in the index
@@ -155,16 +152,17 @@ namespace founder_graphs {
 							[
 								this,
 								sema,
+								block_idx = i,
 								seg_idx,
 								segment = std::move(segment),
 								expected_occurrence_count,
 								&b_positions,
 								&e_positions,
 								&status,
-								&error_os
+								&delegate
 							](){
 								dispatch_semaphore_guard guard(sema);
-							
+								
 								size_type ll{};
 								size_type rr{m_csa.size()};
 								size_type res{};
@@ -175,39 +173,39 @@ namespace founder_graphs {
 						
 									if (0 == res)
 									{
-										synchronize_ostream(error_os) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << i << " of segment " << seg_idx << ": “" << segment << "”.\n";
+										delegate.zero_occurrences_for_segment(block_idx, seg_idx, segment, cc, i);
 										status.store(false, std::memory_order_relaxed);
 										return;
 									}
 								}
-					
+								
 								if (expected_occurrence_count != res)
 								{
-									synchronize_ostream(error_os) << "ERROR: got " << res << " occurrences while " << expected_occurrence_count << " were expected when searching for segment " << seg_idx << ": “" << segment << "”.\n";
+									delegate.unexpected_number_of_occurrences_for_segment(block_idx, seg_idx, segment, expected_occurrence_count, res);
 									status.store(false, std::memory_order_relaxed);
 									return;
 								}
-						
+								
 								// Set the values.
 								{
 									auto const b_res(b_positions.fetch_or(ll, 0x1, std::memory_order_relaxed));
 									auto const e_res(e_positions.fetch_or(rr, 0x1, std::memory_order_relaxed));
-							
+									
 									if (b_res)
 									{
-										synchronize_ostream(error_os) << "ERROR: position " << ll << " in B already set.\n";
+										delegate.position_in_b_already_set(ll);
 										status.store(false, std::memory_order_relaxed);
 									}
-							
+									
 									if (e_res)
 									{
-										synchronize_ostream(error_os) << "ERROR: position " << rr << " in E already set.\n";
+										delegate.position_in_b_already_set(rr);
 										status.store(false, std::memory_order_relaxed);
 									}
 								}
 							}
 						);
-					
+						
 						if (status.load(std::memory_order_acquire))
 							break;
 						
