@@ -214,9 +214,10 @@ namespace {
 	void remove_gaps_and_assign(std::span <char> const src, std::string &dst)
 	{
 		dst.resize(src.size());
-		std::copy_if(src.begin(), src.end(), dst.begin(), [](auto const cc){
+		auto const res(std::copy_if(src.begin(), src.end(), dst.begin(), [](auto const cc){
 			return '-' != cc;
-		});
+		}));
+		dst.resize(res - dst.begin());
 	}
 
 
