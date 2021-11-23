@@ -18,7 +18,7 @@ namespace {
 	constexpr static inline std::size_t BUFFER_SIZE{16384};
 	
 	
-	void remove_ranges(std::istream &stream, char const *range_list_path)
+	void remove_ranges(std::istream &stream, char const *range_list_path, std::size_t const padding)
 	{
 		std::vector <std::pair <std::size_t, std::size_t>> ranges;
 		
@@ -32,7 +32,10 @@ namespace {
 			while (range_stream >> lb >> rb)
 			{
 				libbio_always_assert_lt(lb, rb);
-				ranges.emplace_back(lb, rb);
+				if (rb - lb < 2 * padding)
+					continue;
+
+				ranges.emplace_back(lb + padding, rb - padding);
 			}
 			
 			// Add a sentinel.
@@ -105,16 +108,22 @@ int main(int argc, char **argv)
 	
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cout.exceptions(std::cout.exceptions() | std::ios::badbit | std::ios::failbit);
+
+	if (args_info.padding_arg < 0)
+	{
+		std::cerr << "Padding must be non-negative.\n";
+		std::exit(EXIT_FAILURE);
+	}
 	
 	if (args_info.input_arg)
 	{
 		lb::file_istream stream;
 		lb::open_file_for_reading(args_info.input_arg, stream);
-		remove_ranges(stream, args_info.range_list_arg);
+		remove_ranges(stream, args_info.range_list_arg, args_info.padding_arg);
 	}
 	else
 	{
-		remove_ranges(std::cin, args_info.range_list_arg);
+		remove_ranges(std::cin, args_info.range_list_arg, args_info.padding_arg);
 	}
 	
 	return EXIT_SUCCESS;

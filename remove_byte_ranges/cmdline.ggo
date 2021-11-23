@@ -8,3 +8,4 @@ description	"Reference genomes can contain long unknown or unspecified regions, 
 
 option	"input"			i	"Input path"			string	typestr = "filename"	optional
 option	"range-list"	R	"Range list path"		string	typestr = "filename"	required
+option	"padding"		p	"Padding amount"		int		default = "0"			optional
