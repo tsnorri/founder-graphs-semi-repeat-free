@@ -37,35 +37,35 @@ namespace {
 		template <typename t_char, std::size_t t_extent>
 		std::strong_ordering strong_order(std::string const &lhs, std::span <t_char, t_extent> const rhs) const
 		{
-			std::size_t i(0);
-			std::size_t j(0);
-			std::size_t lhs_gap_count(0);
+			std::size_t li(0);
+			std::size_t ri(0);
+			std::size_t rhs_gap_count(0);
 			std::size_t const lc(lhs.size());
 			std::size_t const rc(rhs.size());
-			while (i < lc && j < rc)
+			while (li < lc && ri < rc)
 			{
 				// Check for a gap.
-				while ('-' == rhs[j])
+				while ('-' == rhs[ri])
 				{
-					++j;
-					++lhs_gap_count;
-					if (j == rc)
+					++ri;
+					++rhs_gap_count;
+					if (ri == rc)
 						goto exit_loop;
 				}
 				
 				// Compare and check for equality.
-				auto const res(lhs[i] <=> rhs[j]);
+				auto const res(lhs[li] <=> rhs[ri]);
 				if (std::is_neq(res))
 					return res;
 				
 				// Continue.
-				++i;
-				++j;
+				++li;
+				++ri;
 			}
 			
 		exit_loop:
 			// The strings have equal prefixes. Compare the lengths.
-			return ((lc - lhs_gap_count) <=> rc);
+			return (lc <=> (rc - rhs_gap_count));
 		}
 		
 		// Less-than operators.
@@ -78,7 +78,7 @@ namespace {
 		template <typename t_char, std::size_t t_extent>
 		bool operator()(std::span <t_char, t_extent> const lhs, std::string const &rhs) const
 		{
-			return std::is_gteq(strong_order(rhs, lhs));
+			return std::is_gt(strong_order(rhs, lhs));
 		}
 		
 		// For pairs of map keys.
@@ -281,6 +281,26 @@ namespace {
 			return '-' != cc;
 		});
 	}
+
+
+	std::string compare_for_debugging(std::span <char> const lhs_, std::string const &rhs_)
+	{
+		std::string_view lhs(lhs_.data(), lhs_.size());
+		std::string_view rhs(rhs_);
+		for (auto const &[i, tup] : rsv::enumerate(rsv::zip(lhs, rhs)))
+		{
+			auto const &[lhsc, rhsc] = tup;
+			if (lhsc != rhsc)
+			{
+				if (10 < i)
+					return boost::str(boost::format("“…%s” vs. “…%s”") % lhs.substr(i - 10, 11) % rhs.substr(i - 10, 11));
+				else
+					return boost::str(boost::format("“%s” vs. “%s”") % lhs.substr(0, 1 + i) % rhs.substr(0, 1 + i));
+			}
+		}
+
+		return "(No differences found.)";
+	}
 	
 	
 	void handle_block_range(
@@ -324,7 +344,7 @@ namespace {
 				std::size_t segment_counter{};
 				segments_by_segment_number.clear();
 				
-				libbio_assert_eq(spans.size(), segment_numbers_by_seq_idx.size());
+				libbio_assert_eq_msg(spans.size(), segment_numbers_by_seq_idx.size(), "spans.size(): ", spans.size(), " segment_numbers_by_seq_idx.size(): ", segment_numbers_by_seq_idx.size());
 				for (auto &&[seq_idx, tup] : rsv::enumerate(rsv::zip(spans, segment_numbers_by_seq_idx)))
 				{
 					auto &[span, segment_number] = tup;
@@ -344,7 +364,7 @@ namespace {
 								std::forward_as_tuple(segment_counter, 1, 0, 0)
 							));
 							
-							libbio_assert(res.second);
+							libbio_assert_msg(res.second, "Unable to insert text even though find() returned end(). Segment and found text: ", compare_for_debugging(span, res.first->first), "\nlhs: “", std::string_view(span.data(), span.size()), "”\nrhs: “", res.first->first, "”");
 							auto &kv(*res.first);
 							segments_by_segment_number.emplace_back(&kv.second);
 						}
@@ -524,7 +544,7 @@ namespace {
 			
 			segment_map segments;
 			// These two are not used here.
-			std::vector <std::size_t> segment_numbers_by_seq_idx;
+			std::vector <std::size_t> segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
 			std::vector <segment_map::mapped_type *> segments_by_segment_number;
 			
 			fg::length_type lb{};
