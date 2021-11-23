@@ -34,6 +34,10 @@ optimize_segmentation/cmdline.c
 optimize_segmentation/cmdline.h
 optimize_segmentation/config.h
 optimize_segmentation/optimize_segmentation
+remove_byte_ranges/cmdline.c
+remove_byte_ranges/cmdline.h
+remove_byte_ranges/config.h
+remove_byte_ranges/remove_byte_ranges
 tests/tests
 
 
