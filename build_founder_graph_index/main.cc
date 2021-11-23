@@ -132,13 +132,21 @@ namespace {
 		virtual bool needs_properties() const = 0;
 		virtual void output_header(fg::length_type const block_count) {}
 		virtual void output(std::size_t const block_idx, segment_map const &segments) = 0;
+		virtual void finish() {}
 	};
 	
 	
 	class indexable_text_output_handler final : public output_handler
 	{
+	protected:
+		bool m_should_skip_trailing_zero{};
+
 	public:
-		using output_handler::output_handler;
+		indexable_text_output_handler(bool const should_skip_trailing_zero, bool const should_skip_output):
+			output_handler(should_skip_output),
+			m_should_skip_trailing_zero(should_skip_trailing_zero)
+		{
+		}
 
 		bool needs_properties() const override { return false; }
 		
@@ -153,6 +161,11 @@ namespace {
 				std::cout << '#';
 				std::copy(kv.first.crbegin(), kv.first.crend(), std::ostream_iterator <char>(std::cout));
 			}
+		}
+
+		void finish() override
+		{
+			std::cout << '\0';
 		}
 	};
 	
@@ -545,6 +558,8 @@ namespace {
 				}
 			}
 		}
+
+		handler.finish();
 	}
 	
 	
@@ -555,11 +570,15 @@ namespace {
 		bool const block_contents_given,
 		bool const tsv_given,
 		bool const omit_segments_given,
+		bool const omit_trailing_zero_given,
 		bool const skip_output_given
 	)
 	{
 		if (block_contents_given)
 		{
+			if (omit_trailing_zero_given)
+				std::cerr << "WARNING: --omit-trailing-zero has no effect when outputting block contents.\n";
+			
 			if (tsv_given)
 			{
 				block_content_tsv_output_handler handler(omit_segments_given, skip_output_given);
@@ -576,7 +595,7 @@ namespace {
 			if (tsv_given || omit_segments_given)
 				std::cerr << "WARNING: --tsv and --omit-segments do not have an effect when outputting text for BWT indexing.\n";
 			
-			indexable_text_output_handler handler(skip_output_given);
+			indexable_text_output_handler handler(omit_trailing_zero_given, skip_output_given);
 			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 		}
 	}
@@ -651,6 +670,7 @@ int main(int argc, char **argv)
 				args_info.block_contents_given,
 				args_info.tsv_given,
 				args_info.omit_segments_given,
+				args_info.omit_trailing_zero_given,
 				args_info.skip_output_given
 			);
 		}
@@ -664,6 +684,7 @@ int main(int argc, char **argv)
 				args_info.block_contents_given,
 				args_info.tsv_given,
 				args_info.omit_segments_given,
+				args_info.omit_trailing_zero_given,
 				args_info.skip_output_given
 			);
 		}

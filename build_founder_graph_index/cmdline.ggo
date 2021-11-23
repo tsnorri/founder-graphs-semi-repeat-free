@@ -3,7 +3,7 @@
 
 package		"build_founder_graph_index"
 purpose		"Build a founder graph index from optimized segmentation"
-description	"Generates an indexable text from optimized founder graph segmentation and builds a founder graph index from that. For generating indexable text, compressed input needs to be in bgzip format, while for generating the actual index, gzip will suffice."
+description	"Generates indexable texts from optimized founder graph segmentation and builds a founder graph index from that. The texts are the actual indexable text and the founder graph node labels separately. For generating indexable texts, compressed input needs to be in bgzip format, while for generating the actual index, gzip will suffice. When generating the text for the BWT index, a zero character will be appended by default in order to skip one step in SDSL’s construct() when building the index."
 
 option		"gzip-input"				z	"Input is (b)gzipped"							flag	off
 
@@ -14,7 +14,8 @@ modeoption	"segmentation"				e	"Optimized segmentation path"					string	typestr 
 modeoption	"block-contents"			b	"Output block contents"															mode = "Generate indexable texts"		optional
 modeoption	"tsv"						-	"Output as TSV"																	mode = "Generate indexable texts"		optional
 modeoption	"omit-segments"				-	"Omit segments when outputting block contents"									mode = "Generate indexable texts"		optional
-modeoption	"skip-output"				-	"Skip output"																	mode = "Generate indexable texts"		optional
+modeoption	"omit-trailing-zero"		-	"Omit the trailing zero character from the indexable text"						mode = "Generate indexable texts"		optional
+modeoption	"skip-output"				-	"Skip output (for debugging)"													mode = "Generate indexable texts"		optional
 
 defmode "Generate founder graph index"	modedesc = "Generate a founder graph index from the indexable text and block contents"
 modeoption	"generate-index"			I	"Generate a founder graph index"												mode = "Generate founder graph index"	required
