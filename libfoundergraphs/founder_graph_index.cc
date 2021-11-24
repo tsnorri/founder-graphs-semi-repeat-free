@@ -49,6 +49,27 @@ namespace {
 			dispatch_semaphore_signal(m_semaphore);
 		}
 	};
+	
+	
+	void construct_csa(
+		founder_graph_indices::csa_type &csa,
+		std::string const &text_path,
+		char const *sa_path,
+		std::string const &block_content_path,
+		bool const text_is_zero_terminated
+	)
+	{
+		sdsl::cache_config config(false); // Do not remove temporary files automatically.
+		
+		if (text_is_zero_terminated)
+			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
+		
+		if (sa_path)
+			config.file_map[sdsl::conf::KEY_SA] = sa_path;
+		
+		// SDSL’s construct() does not use the given text if KEY_TEXT is set in config.
+		sdsl::construct(csa, text_path, config, 1);
+	}
 }
 
 
@@ -56,7 +77,9 @@ namespace founder_graphs {
 	
 	bool founder_graph_index::construct(
 		std::string const &text_path,
+		char const *sa_path,
 		std::string const &block_content_path,
+		bool const text_is_zero_terminated,
 		founder_graph_index_construction_delegate &delegate
 	)
 	{
@@ -80,7 +103,7 @@ namespace founder_graphs {
 		cereal::PortableBinaryInputArchive archive(block_content_stream);
 		
 		// Build the CSA.
-		sdsl::construct(m_csa, text_path, 1);
+		construct_csa(m_csa, text_path, sa_path, block_content_path, text_is_zero_terminated);
 		
 		lb::dispatch_ptr <dispatch_group_t> group_ptr(dispatch_group_create());
 		lb::dispatch_ptr <dispatch_semaphore_t> sema_ptr(dispatch_semaphore_create(256)); // Limit the number of segments read in the current thread.

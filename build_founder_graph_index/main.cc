@@ -653,7 +653,7 @@ int main(int argc, char **argv)
 	{
 		fg::founder_graph_index founder_index;
 		founder_graph_index_construction_delegate delegate;
-		if (founder_index.construct(args_info.text_path_arg, args_info.block_contents_path_arg, delegate))
+		if (founder_index.construct(args_info.text_path_arg, args_info.sa_path_arg, args_info.block_contents_path_arg, true, delegate))
 		{
 			cereal::PortableBinaryOutputArchive archive{std::cout};
 			archive(founder_index);
