@@ -408,7 +408,7 @@ namespace {
 			fg::length_type lb{};
 			if (block_count)
 			{
-				lb::log_time(std::cerr) << "Block 1/" << (block_count - 1) << "…\n";
+				lb::log_time(std::cerr) << "Block 1/" << block_count << "…\n";
 				
 				fg::length_type rb{};
 				archive(rb);
@@ -428,7 +428,7 @@ namespace {
 				
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
-					lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << (block_count - 1) << "…\n";
+					lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
 					
 					// Read the next right bound.
 					archive(rb);
