@@ -75,7 +75,9 @@ namespace founder_graphs {
 	public:
 		bool construct(
 			std::string const &text_path,
+			char const *sa_path,
 			std::string const &block_content_path,
+			bool const text_is_zero_terminated,
 			founder_graph_index_construction_delegate &delegate
 		);
 		

@@ -52,7 +52,7 @@ namespace {
 	
 	
 	void construct_csa(
-		founder_graph_indices::csa_type &csa,
+		fg::founder_graph_indices::csa_type &csa,
 		std::string const &text_path,
 		char const *sa_path,
 		std::string const &block_content_path,
