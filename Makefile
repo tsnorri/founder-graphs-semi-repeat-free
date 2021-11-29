@@ -28,6 +28,7 @@ clean:
 	$(MAKE) -C founder_block_tool clean
 	$(MAKE) -C int_vector_tool clean
 	$(MAKE) -C msa_index_cmp clean
+	$(MAKE) -C optimize_segmentation clean
 
 clean-all: clean
 	$(MAKE) -C lib/libbio clean
