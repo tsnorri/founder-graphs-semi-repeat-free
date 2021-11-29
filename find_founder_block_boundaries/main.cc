@@ -339,17 +339,18 @@ namespace {
 
 						// Find the minimum right bound for the block by counting characters.
 						fg::length_type const block_lb{aligned_size - pos};
-						fg::length_type max_block_rb{0};
+						fg::length_type max_block_rb{0}; // Right bound of a /closed/ interval.
 						for (std::size_t j(0); j < seq_count; ++j)
 						{
 							try
 							{
 								auto const string_depth(string_depths[j]);
+								libbio_assert_lt(0, string_depth);
 								libbio_assert_neq(string_depth, SIZE_MAX);
 								auto const &seq_idx(msa_index.sequence_indices[j]);
 								auto const non_gap_count_before(seq_idx.rank0_support(block_lb));
 								auto const non_gap_rb(non_gap_count_before + string_depth);
-								auto const block_rb(seq_idx.select0_support(1 + non_gap_rb));
+								auto const block_rb(seq_idx.select0_support(non_gap_rb));
 								libbio_always_assert_lt(block_rb, SIZE_MAX);
 								max_block_rb = std::max(max_block_rb, fg::length_type(block_rb));
 							}
