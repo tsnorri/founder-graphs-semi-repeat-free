@@ -43,7 +43,7 @@ namespace founder_graphs {
 				
 				// Compare and check for equality.
 				auto const res(lhs[li] <=> rhs[ri]);
-				if (std::is_neq(res))
+				if (0 != res) // FIXME: for some reason, some versions of libc++ do not have std::is_neq(). (std::is_neq(res))
 					return res;
 				
 				// Continue.
