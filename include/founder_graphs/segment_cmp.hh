@@ -51,7 +51,7 @@ namespace founder_graphs {
 				++ri;
 			}
 			
-			// Handle trailing gaps.
+			// Handle the trailing gaps.
 			while (ri < rc)
 			{
 				if ('-' != rhs[ri])
@@ -79,7 +79,7 @@ namespace founder_graphs {
 			return std::is_gt(strong_order(rhs, lhs));
 		}
 		
-		// For pairs of map keys.
+		// For pairs of map keys. These are guaranteed to not have gaps characters.
 		bool operator()(std::string const &lhs, std::string const &rhs) const
 		{
 			return lhs < rhs;
