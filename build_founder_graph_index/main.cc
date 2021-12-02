@@ -208,6 +208,62 @@ namespace {
 			}
 		}
 	};
+
+
+	void read_block_contents(char const *block_contents_path, bool const should_read_segments)
+	{
+		lb::file_istream stream;
+		lb::open_file_for_reading(block_contents_path, stream);
+		cereal::PortableBinaryInputArchive archive(stream);
+		
+		// Read the header.
+		fg::length_type block_count{};
+		archive(cereal::make_size_tag(block_count));
+		
+		if (should_read_segments)
+		{
+			std::cout << "BLOCK\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT\n";
+			
+			std::string segment;
+			for (fg::length_type j(0); j < block_count; ++j)
+			{
+				// Read the segment count.
+				fg::length_type segment_count{};
+				archive(cereal::make_size_tag(segment_count));
+				
+				for (fg::length_type i(0); i < segment_count; ++i)
+				{
+					segment.clear();
+					
+					fg::length_type prefix_count{};
+					fg::length_type edge_count{};
+					archive(prefix_count);
+					archive(edge_count);
+					archive(segment);
+					std::cout << j << '\t' << prefix_count << '\t' << edge_count << '\t' << segment << '\n';
+				}
+			}
+		}
+		else
+		{
+			std::cout << "BLOCK\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT_LENGTH\n";
+
+			for (fg::length_type j(0); j < block_count; ++j)
+			{
+				// Read the segment count.
+				fg::length_type segment_count{};
+				archive(cereal::make_size_tag(segment_count));
+				
+				for (fg::length_type i(0); i < segment_count; ++i)
+				{
+					fg::length_type prefix_count{};
+					fg::length_type edge_count{};
+					fg::length_type segment_length{};
+					std::cout << j << '\t' << prefix_count << '\t' << edge_count << '\t' << segment_length << '\n';
+				}
+			}
+		}
+	}
 	
 	
 	// For assigning std::span <char> to std::string.
@@ -408,6 +464,7 @@ namespace {
 			fg::length_type lb{};
 			if (block_count)
 			{
+				// First block.
 				lb::log_time(std::cerr) << "Block 1/" << block_count << "…\n";
 				
 				fg::length_type rb{};
@@ -426,6 +483,7 @@ namespace {
 					
 				lb = rb;
 				
+				// Rest of the blocks.
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
 					lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
@@ -483,7 +541,7 @@ namespace {
 			// Maintain two ranges, [lb, mid) and [mid, rb).
 			
 			segment_map segments;
-			// These two are not used here.
+			// These two are not used here but handle_block_range() currently fills them anyway.
 			std::vector <std::size_t> segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
 			std::vector <segment_map::mapped_type *> segments_by_segment_number;
 			
@@ -559,8 +617,8 @@ namespace {
 			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
 		}
 	}
-	
-	
+
+
 	std::ostream &synchronize_ostream(std::ostream &stream)
 	{
 		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
@@ -618,6 +676,15 @@ int main(int argc, char **argv)
 	std::ios_base::sync_with_stdio(false);	// Don't use C style IO after calling cmdline_parser.
 	std::cin.tie(nullptr);					// We don't require any input from the user.
 	
+	std::cerr << "Invocation:\n";
+	for (int i(0); i < argc; ++i)
+	{
+		if (i)
+			std::cerr << ' ';
+		std::cerr << argv[i];
+	}
+	std::cerr << '\n';
+	
 	if (args_info.generate_indexable_texts_given)
 	{
 		if (args_info.gzip_input_given)
@@ -658,6 +725,10 @@ int main(int argc, char **argv)
 			cereal::PortableBinaryOutputArchive archive{std::cout};
 			archive(founder_index);
 		}
+	}
+	else if (args_info.read_block_contents_given)
+	{
+		read_block_contents(args_info.read_block_contents_arg, !args_info.without_segments_given);
 	}
 	else
 	{

@@ -22,3 +22,7 @@ modeoption	"generate-index"			I	"Generate a founder graph index"															m
 modeoption	"text-path"					t	"Indexable text path"										string	typestr = "filename"	mode = "Generate founder graph index"	required
 modeoption	"sa-path"					-	"Precalculated suffix array path (in SDSL’s format)"		string	typestr = "filename"	mode = "Generate founder graph index"	optional
 modeoption	"block-contents-path"		l	"Block contents (as binary) path"							string	typestr = "filename"	mode = "Generate founder graph index"	required
+
+defmode "Read block contents"			modedesc = "Read the block contents as stored with build_founder_graph_index -T -b"
+modeoption	"read-block-contents"		R	"Read the block contents from the given path"				string	typestr = "filename"	mode = "Read block contents"			required
+modeoption	"without-segments"			-	"Read segment lengths (--omit-segments given when writing)"									mode = "Read block contents"			optional
