@@ -23,7 +23,7 @@ namespace {
 	{
 		auto *dst(dst_vec.data());
 		static_assert(std::is_same_v <std::remove_pointer_t <decltype(dst)>, lb::atomic_bit_vector::word_type>);
-		libbio_assert_eq(dst_vec.size() / 64, src_vec.word_size());
+		libbio_assert_eq((dst_vec.size() - 1) / 64 + 1, src_vec.word_size());
 		std::copy(src_vec.word_begin(), src_vec.word_end(), dst);
 	}
 	
@@ -55,17 +55,66 @@ namespace {
 		fg::founder_graph_indices::csa_type &csa,
 		std::string const &text_path,
 		char const *sa_path,
+		char const *bwt_path,
 		std::string const &block_content_path,
 		bool const text_is_zero_terminated
 	)
 	{
 		sdsl::cache_config config(false); // Do not remove temporary files automatically.
 		
-		if (text_is_zero_terminated)
-			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
-		
 		if (sa_path)
 			config.file_map[sdsl::conf::KEY_SA] = sa_path;
+		
+		if (bwt_path)
+			config.file_map[sdsl::conf::KEY_BWT] = bwt_path;
+		
+		if (text_is_zero_terminated)
+		{
+			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
+			
+			if (!sa_path)
+			{
+				// The suffix array needs to be constructed b.c. sa_path was not set.
+				// SDSL’s construct() expects the text to have the integer vector header, but we don’t output that.
+				// Hence we construct the suffix array here.
+				sdsl::read_only_mapper <8> text(text_path, true, false);
+				auto const fname(sdsl::cache_file_name(sdsl::conf::KEY_SA, config));
+				auto suffix_array(
+					sdsl::write_out_mapper <0>::create(
+						fname,
+						0,
+						sdsl::bits::hi(text.size()) + 1
+					)
+				);
+				sdsl::algorithm::calculate_sa(reinterpret_cast <unsigned char const *>(text.data()), text.size(), suffix_array);
+				config.file_map[sdsl::conf::KEY_SA] = fname;
+				sa_path = config.file_map[sdsl::conf::KEY_SA].data(); // std::string is guaranteed to be zero-terminated.
+			}
+			
+			if (!bwt_path)
+			{
+				// Same as with the suffix array.
+				sdsl::read_only_mapper <8> text(text_path, true, false);
+				auto const text_size(text.size());
+				
+				std::size_t const buffer_size(1000000U); // Same as in SDSL, multiple of 8.
+				sdsl::int_vector_buffer <> sa_buf(sa_path, std::ios::in, buffer_size);
+				
+				auto const fname(sdsl::cache_file_name(sdsl::conf::KEY_BWT, config));
+				auto bwt(sdsl::write_out_mapper <8>::create(fname, text_size, 8));
+				
+				for (std::size_t i(0); i < text_size; ++i)
+				{
+					auto const pos(sa_buf[i]);
+					auto const idx(pos ? pos - 1 : text.size() - 1);
+					bwt[i] = text[idx];
+					//std::cerr << i << '\t' << pos << '\t' << text[idx] << '\t' << int(text[idx]) << '\n';
+				}
+				
+				config.file_map[sdsl::conf::KEY_BWT] = fname;
+				bwt_path = config.file_map[sdsl::conf::KEY_BWT].data();
+			}
+		}
 		
 		// SDSL’s construct() does not use the given text if KEY_TEXT is set in config.
 		sdsl::construct(csa, text_path, config, 1);
@@ -78,6 +127,7 @@ namespace founder_graphs {
 	bool founder_graph_index::construct(
 		std::string const &text_path,
 		char const *sa_path,
+		char const *bwt_path,
 		std::string const &block_content_path,
 		bool const text_is_zero_terminated,
 		founder_graph_index_construction_delegate &delegate
@@ -103,7 +153,7 @@ namespace founder_graphs {
 		cereal::PortableBinaryInputArchive archive(block_content_stream);
 		
 		// Build the CSA.
-		construct_csa(m_csa, text_path, sa_path, block_content_path, text_is_zero_terminated);
+		construct_csa(m_csa, text_path, sa_path, bwt_path, block_content_path, text_is_zero_terminated);
 		
 		lb::dispatch_ptr <dispatch_group_t> group_ptr(dispatch_group_create());
 		lb::dispatch_ptr <dispatch_semaphore_t> sema_ptr(dispatch_semaphore_create(256)); // Limit the number of segments read in the current thread.
@@ -167,8 +217,6 @@ namespace founder_graphs {
 						auto const expected_occurrence_count(edge_count_csum[prefix_count + 1 + j] - edge_count_csum[j]);
 						auto &segment(segments[j]);
 						
-						dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-						
 						lb::dispatch_group_async_fn(
 							group,
 							concurrent_queue,
@@ -187,7 +235,7 @@ namespace founder_graphs {
 								dispatch_semaphore_guard guard(sema);
 								
 								size_type ll{};
-								size_type rr{m_csa.size()};
+								size_type rr{m_csa.size() - 1};
 								size_type res{};
 								for (auto const [i, cc] : rsv::enumerate(segment))
 								{
@@ -229,13 +277,14 @@ namespace founder_graphs {
 							}
 						);
 						
-						if (status.load(std::memory_order_acquire))
-							break;
+						if (!status.load(std::memory_order_acquire))
+							goto exit_loop;
 						
 						++seg_idx;
 					}
 				}
 				
+			exit_loop:
 				// Wait until the tasks are finished before releasing anything.
 				// (I think the blocks retain the associated queue, though, so we might be able to just return.
 				// The semaphore does need to get incremented to its old value before that.)
