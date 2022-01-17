@@ -14,7 +14,7 @@
 
 namespace founder_graphs::founder_graph_indices { 
 	
-	typedef sdsl::wt_huff <
+	typedef sdsl::wt_int <
 		sdsl::bit_vector,
 		sdsl::rank_support_v5 <1>,
 		sdsl::select_support_mcl <1>,
