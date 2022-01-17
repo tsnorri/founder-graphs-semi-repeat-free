@@ -256,7 +256,7 @@ namespace founder_graphs {
 								&status,
 								&delegate
 							](){
-								dispatch_semaphore_guard guard(sema);
+								dispatch_semaphore_guard guard(sema); // Signal the semaphore when done.
 								
 								size_type ll{};
 								size_type rr{m_csa.size() - 1};
@@ -314,7 +314,7 @@ namespace founder_graphs {
 				// The semaphore does need to get incremented to its old value before that.)
 				dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
 				
-				if (!status)
+				if (!status.load(std::memory_order_acquire))
 					return false;
 				
 				// Copy the values.
