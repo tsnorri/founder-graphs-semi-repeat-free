@@ -63,7 +63,7 @@ Suppose the multiple sequence alignment is stored in a number of text files such
 
 ### Building a Co-Ordinate Transformation Index
 
-In this phase, the original inputs are required. The inputs may be compressed with `bgzip` (part of [htslib](http://www.htslib.org)) or `gzip`. To compress the files so that they can be used as inputs for `finder_block_boundaries`, use a command like `bgzip -i -@ 16 input.txt`.
+In this phase, the original inputs are required. The inputs may be compressed with `bgzip` (part of [htslib](http://www.htslib.org)) or `gzip`. To compress the files so that they can be used as inputs for also `find_block_boundaries`, use a command like `bgzip -i -@ 16 input.txt`.
 
 Suppose `sequence-list-compressed.txt` contains the paths of the compressed sequence files. The index can be generated with e.g. `build_msa_index --sequence-list=sequence-list-compressed.txt --gzip-input > msa-index.dat`.
 
