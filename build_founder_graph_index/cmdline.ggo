@@ -23,6 +23,7 @@ modeoption	"text-path"					t	"Indexable text path"										string	typestr = "fi
 modeoption	"sa-path"					-	"Precalculated suffix array path (in SDSL’s format)"		string	typestr = "filename"	mode = "Generate founder graph index"	optional
 modeoption	"bwt-path"					-	"Precalculated BWT path"									string	typestr = "filename"	mode = "Generate founder graph index"	optional
 modeoption	"block-contents-path"		l	"Block contents (as binary) path"							string	typestr = "filename"	mode = "Generate founder graph index"	required
+modeoption	"only-build-csa"			-	"Only build the CSA."																		mode = "Generate founder graph index"	optional
 
 defmode "Read block contents"			modedesc = "Read the block contents as stored with build_founder_graph_index -T -b"
 modeoption	"read-block-contents"		R	"Read the block contents from the given path"				string	typestr = "filename"	mode = "Read block contents"			required

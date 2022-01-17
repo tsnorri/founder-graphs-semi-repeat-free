@@ -73,12 +73,15 @@ namespace founder_graphs {
 		select1_support_type	m_e_positions_select1_support;
 		
 	public:
-		bool construct(
+		void build_csa(
 			std::string const &text_path,
 			char const *sa_path,
 			char const *bwt_path,
+			bool const text_is_zero_terminated
+		);
+
+		bool store_node_label_lexicographic_ranges(
 			std::string const &block_content_path,
-			bool const text_is_zero_terminated,
 			founder_graph_index_construction_delegate &delegate
 		);
 		

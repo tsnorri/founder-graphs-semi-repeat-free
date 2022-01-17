@@ -102,7 +102,8 @@ namespace {
 
 		void finish() override
 		{
-			std::cout << '\0';
+			if (!m_should_skip_trailing_zero)
+				std::cout << '\0';
 		}
 	};
 	
@@ -486,7 +487,8 @@ namespace {
 				// Rest of the blocks.
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
-					lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
+					if (0 == (1 + i) % 1000)
+						lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
 					
 					// Read the next right bound.
 					archive(rb);
@@ -552,7 +554,8 @@ namespace {
 				archive(mid);
 				for (fg::length_type i(1); i < block_count; ++i)
 				{
-					lb::log_time(std::cerr) << "Block " << i << '/' << (block_count - 1) << "…\n";
+					if (0 == i % 1000)
+						lb::log_time(std::cerr) << "Block " << i << '/' << (block_count - 1) << "…\n";
 					
 					// Read the next right bound.
 					fg::length_type rb{};
@@ -719,12 +722,23 @@ int main(int argc, char **argv)
 	else if (args_info.generate_index_given)
 	{
 		fg::founder_graph_index founder_index;
-		founder_graph_index_construction_delegate delegate;
-		if (founder_index.construct(args_info.text_path_arg, args_info.sa_path_arg, args_info.bwt_path_arg, args_info.block_contents_path_arg, true, delegate))
+		founder_index.build_csa(args_info.text_path_arg, args_info.sa_path_arg, args_info.bwt_path_arg, false);
+		if (args_info.only_build_csa_given)
 		{
 			cereal::PortableBinaryOutputArchive archive{std::cout};
 			archive(founder_index);
+			return EXIT_SUCCESS;
 		}
+
+		founder_graph_index_construction_delegate delegate;
+		if (founder_index.store_node_label_lexicographic_ranges(args_info.block_contents_path_arg, delegate))
+		{
+			cereal::PortableBinaryOutputArchive archive{std::cout};
+			archive(founder_index);
+			return EXIT_SUCCESS;
+		}
+
+		return EXIT_FAILURE;
 	}
 	else if (args_info.read_block_contents_given)
 	{

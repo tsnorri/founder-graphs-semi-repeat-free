@@ -56,20 +56,28 @@ namespace {
 		std::string const &text_path,
 		char const *sa_path,
 		char const *bwt_path,
-		std::string const &block_content_path,
 		bool const text_is_zero_terminated
 	)
 	{
+		// FIXME: remove logging or use delegate.
+
 		sdsl::cache_config config(false); // Do not remove temporary files automatically.
 		
 		if (sa_path)
+		{
+			lb::log_time(std::cerr) << "Using suffix array at " << sa_path << ".\n"; 
 			config.file_map[sdsl::conf::KEY_SA] = sa_path;
+		}
 		
 		if (bwt_path)
+		{
+			lb::log_time(std::cerr) << "Using BWT at " << bwt_path << ".\n"; 
 			config.file_map[sdsl::conf::KEY_BWT] = bwt_path;
+		}
 		
 		if (text_is_zero_terminated)
 		{
+			lb::log_time(std::cerr) << "Using zero-terminated text at " << text_path << ".\n"; 
 			config.file_map[sdsl::conf::KEY_TEXT] = text_path;
 			
 			if (!sa_path)
@@ -77,6 +85,7 @@ namespace {
 				// The suffix array needs to be constructed b.c. sa_path was not set.
 				// SDSL’s construct() expects the text to have the integer vector header, but we don’t output that.
 				// Hence we construct the suffix array here.
+				lb::log_time(std::cerr) << "Building suffix array…\n"; 
 				sdsl::read_only_mapper <8> text(text_path, true, false);
 				auto const fname(sdsl::cache_file_name(sdsl::conf::KEY_SA, config));
 				auto suffix_array(
@@ -94,21 +103,31 @@ namespace {
 			if (!bwt_path)
 			{
 				// Same as with the suffix array.
+				lb::log_time(std::cerr) << "Building BWT…\n"; 
 				sdsl::read_only_mapper <8> text(text_path, true, false);
 				auto const text_size(text.size());
 				
-				std::size_t const buffer_size(1000000U); // Same as in SDSL, multiple of 8.
+				std::size_t const buffer_size(1024U * 1024U * 512U); // Same as in SDSL, multiple of 8.
 				sdsl::int_vector_buffer <> sa_buf(sa_path, std::ios::in, buffer_size);
 				
 				auto const fname(sdsl::cache_file_name(sdsl::conf::KEY_BWT, config));
-				auto bwt(sdsl::write_out_mapper <8>::create(fname, text_size, 8));
+				lb::log_time(std::cerr) << "Writing to " << fname << '\n';
+				std::vector <char> bwt(text_size, 0);
 				
 				for (std::size_t i(0); i < text_size; ++i)
 				{
 					auto const pos(sa_buf[i]);
 					auto const idx(pos ? pos - 1 : text.size() - 1);
-					bwt[i] = text[idx];
+					libbio_assert_lt(idx, text.size());
+					//libbio_assert_lt(i, bwt.size()); // Not true for int_vector_buffer.
+					auto const cc(text[idx]);
+					bwt[i] = cc;
 					//std::cerr << i << '\t' << pos << '\t' << text[idx] << '\t' << int(text[idx]) << '\n';
+				}
+
+				{
+					std::ofstream bwt_stream(fname);
+					std::copy(bwt.begin(), bwt.end(), std::ostream_iterator <char>(bwt_stream));
 				}
 				
 				config.file_map[sdsl::conf::KEY_BWT] = fname;
@@ -117,6 +136,7 @@ namespace {
 		}
 		
 		// SDSL’s construct() does not use the given text if KEY_TEXT is set in config.
+		lb::log_time(std::cerr) << "Building CSA…\n"; 
 		sdsl::construct(csa, text_path, config, 1);
 	}
 }
@@ -124,17 +144,24 @@ namespace {
 
 namespace founder_graphs {
 	
-	bool founder_graph_index::construct(
+	void founder_graph_index::build_csa(
 		std::string const &text_path,
 		char const *sa_path,
 		char const *bwt_path,
+		bool const text_is_zero_terminated
+	)
+	{
+		// Build the CSA.
+		construct_csa(m_csa, text_path, sa_path, bwt_path, text_is_zero_terminated);
+	}
+
+	bool founder_graph_index::store_node_label_lexicographic_ranges(
 		std::string const &block_content_path,
-		bool const text_is_zero_terminated,
 		founder_graph_index_construction_delegate &delegate
 	)
 	{
-		// Construct the founder graph index. We first use SDSL to construct the BWT index.
-		// Then we read the block contents (i.e. segments), try to locate them in the index
+		// Construct the founder graph index.
+		// After preparing the BWT index, we read the block contents (i.e. segments), try to locate them in the index
 		// and finally store the lexicographic range boundaries in m_b_positions and m_e_positions.
 		// Since each segment can be searched separately, we do this in parallel and write
 		// the boundaries to atomic bit vectors.
@@ -151,9 +178,6 @@ namespace founder_graphs {
 		lb::file_istream block_content_stream;
 		lb::open_file_for_reading(block_content_path, block_content_stream);
 		cereal::PortableBinaryInputArchive archive(block_content_stream);
-		
-		// Build the CSA.
-		construct_csa(m_csa, text_path, sa_path, bwt_path, block_content_path, text_is_zero_terminated);
 		
 		lb::dispatch_ptr <dispatch_group_t> group_ptr(dispatch_group_create());
 		lb::dispatch_ptr <dispatch_semaphore_t> sema_ptr(dispatch_semaphore_create(256)); // Limit the number of segments read in the current thread.
