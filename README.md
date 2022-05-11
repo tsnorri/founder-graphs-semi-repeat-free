@@ -54,7 +54,7 @@ On a high level, the workflow consists of the following steps:
 
 Suppose the multiple sequence alignment is stored in a number of text files such that there is one sequence in each file without a trailing newline, and `sequence-list.txt` contains the paths of the files.
 
-1. Remove gaps from the inputs and concatenate them. This can be done with e.g. `cat sequence-list.txt | while read x; do echo "#" >> concatenated.txt; tr -d "-" "${x}" >> concatenated.txt; done`
+1. Remove gaps from the inputs and concatenate them. This can be done with e.g. `cat sequence-list.txt | while read x; do echo -n "#" >> concatenated.txt; tr -d "-" "${x}" >> concatenated.txt; done`
 2. (Optional) Build the suffix array. We have provided a tool that uses [Parallel-DivSufSort](https://github.com/jlabeit/parallel-divsufsort) for this purpose instead of the version of [divsufsort](https://github.com/y-256/libdivsufsort) bundled with [SDSL](https://github.com/xxsds/sdsl-lite). The concatenated input can be processed with e.g. `build_sa --input=concatenated.txt > concatenated.sa`. However, the resulting file needs to be renamed manually so that SDSL can find it in the next step.
 3. Build the compressed suffix tree.
    * To use SDSL’s divsufsort, use `build_cst --input=concatenated.txt > concatenated.cst`.
