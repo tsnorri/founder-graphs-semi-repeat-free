@@ -123,7 +123,13 @@ namespace {
 	}
 	
 	
-	void find_founder_block_boundaries(char const *sequence_list_path, char const *cst_path, char const *msa_index_path, fg::reverse_msa_reader &reader)
+	void find_founder_block_boundaries(
+		char const *sequence_list_path,
+		char const *cst_path,
+		char const *msa_index_path,
+		fg::reverse_msa_reader &reader,
+		bool const verbose
+	)
 	{
 		lb::log_time(std::cerr) << "Loading the data structures…\n";
 
@@ -145,7 +151,8 @@ namespace {
 		
 		// Prepare for output.
 		cereal::PortableBinaryOutputArchive archive(std::cout);
-		
+		std::size_t semi_repeat_free_count{};
+
 		// Process.
 		{
 			// Prepare the reader.
@@ -174,6 +181,7 @@ namespace {
 			while (reader.fill_buffer(
 				[
 					&reader,
+					verbose,
 					&pos,
 					seq_count,
 					aligned_size,
@@ -181,6 +189,7 @@ namespace {
 					&cst,
 					&node_spans,
 					&archive,
+					&semi_repeat_free_count,
 					&string_depths,
 					&msa_index,
 					&handled_sequences
@@ -281,6 +290,11 @@ namespace {
 						libbio_assert(node_spans.back().is_sentinel());
 						if (node_spans.back().length_sum != seq_count)
 						{
+							if (verbose)
+								std::cerr << "No semi-repeat-free block at column " << (aligned_size - pos) << ".\n";
+							if (aligned_size == pos)
+								std::cerr << "WARNING: No semi-repeat-free block at column zero.\n";
+
 							archive(fg::length_type(fg::LENGTH_MAX));
 							continue;
 						}
@@ -394,8 +408,11 @@ namespace {
 						}
 						
 						// Output max_block_rb.
-						// The semi-repeat-free range will be [block_lb, block_rb].
+						// The semi-repeat-free range will be [block_lb, max_block_rb].
+						if (verbose)
+							std::cerr << "Found a semi-repeat-free block at [" << block_lb << ", " << max_block_rb << "].\n";
 						archive(fg::length_type(max_block_rb));
+						++semi_repeat_free_count;
 					}
 					
 					return true;
@@ -404,7 +421,7 @@ namespace {
 		}
 		
 		std::cout << std::flush;
-		lb::log_time(std::cerr) << "Done.\n";
+		lb::log_time(std::cerr) << "Done. Found " << semi_repeat_free_count << " semi-repeat-free blocks.\n";
 	}
 }
 
@@ -425,12 +442,12 @@ int main(int argc, char **argv)
 	if (args_info.bgzip_input_flag)
 	{
 		fg::bgzip_reverse_msa_reader reader;
-		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
+		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader, args_info.verbose_flag);
 	}
 	else
 	{
 		fg::text_reverse_msa_reader reader;
-		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader);
+		find_founder_block_boundaries(args_info.sequence_list_arg, args_info.cst_arg, args_info.msa_index_arg, reader, args_info.verbose_flag);
 	}
 	
 	return EXIT_SUCCESS;

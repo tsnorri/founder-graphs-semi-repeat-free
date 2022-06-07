@@ -9,4 +9,5 @@ description	"Determines semi-repeat-free founder block boundaries from the input
 option		"sequence-list"	-	"Input sequence list path"			string		typestr = "filename"		required
 option		"cst"			-	"Input CST path"					string		typestr = "filename"		required
 option		"msa-index"		-	"Input MSA index path"				string		typestr = "filename"		required
-option		"bgzip-input"	-	"Input sequences are compressed"	flag									off
+option		"bgzip-input"	z	"Input sequences are compressed"	flag									off
+option		"verbose"		v	"Increase verbosity"				flag									off
