@@ -1,0 +1,10 @@
+# Copyright (c) 2022 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"find_in_graph"
+purpose		"Find patterns in a founder graph index generated with build_founder_graph_index."
+usage		"find_in_graph -i index.dat"
+
+option	"index-input"		i	"Index input"								string	typestr = "filename"	required
+option	"pattern-input"		p	"Read patterns from file instead of stdin"	string	typestr = "filename"	optional
+option	"without-prompt"	r	"Omit prompt from output"					flag	off
