@@ -3,16 +3,17 @@ include ../common.mk
 
 CATCH2_PREFIX			= ../lib/libbio/lib/Catch2
 CATCH2_HEADERS			= $(shell find $(CATCH2_PREFIX)/include)
+RAPIDCHECK_PREFIX		= ../lib/rapidcheck
 
-CPPFLAGS += -I$(CATCH2_PREFIX)/single_include
+CPPFLAGS += -I$(CATCH2_PREFIX)/single_include -I$(RAPIDCHECK_PREFIX)/include -I$(RAPIDCHECK_PREFIX)/extras/catch/include
 CXXFLAGS += -coverage
 LDFLAGS += -coverage
 
 OBJECTS	=	bgzip_reader.o \
 			bgzip_reverse_msa_reader.o \
-			count_distinct.o \
 			main.o \
-			segment_cmp.o
+			segment_cmp.o \
+			sort.o
 
 TEST_FILES =	test-files/random-200000B.txt \
 				test-files/equal-length-1/1 \
@@ -24,7 +25,7 @@ GCDA = $(OBJECTS:.o=.gcda)
 GCNO = $(OBJECTS:.o=.gcno)
 
 
-LIBRARIES = ../libfoundergraphs/libfoundergraphs.a
+LIBRARIES = ../libfoundergraphs/libfoundergraphs.a $(RAPIDCHECK_PREFIX)/build/librapidcheck.a
 
 
 all: run-tests
