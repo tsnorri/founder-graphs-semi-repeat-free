@@ -41,7 +41,7 @@ namespace {
 			
 			THEN("the result is “equal”")
 			{
-				CHECK(std::is_eq(res));
+				CHECK(std::strong_ordering::equal == res); //CHECK(std::is_eq(res)); // My libc++ does not have std::is_eq() for some reason.
 				CHECK(!cmp(lhs, rhs));
 				CHECK(!cmp(rhs, lhs));
 			}
