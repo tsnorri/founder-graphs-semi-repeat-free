@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Tuukka Norri
+ * Copyright (c) 2021-2022 Tuukka Norri
  * This code is licensed under MIT license (see LICENSE for details).
  */
 
@@ -11,26 +11,75 @@
 
 namespace founder_graphs {
 	
-	// FIXME: enable_if t_iterator is not single-pass.
-	template <typename t_iterator>
-	std::size_t count_distinct(t_iterator it, t_iterator const end)
+	// Collapse groups of equal items.
+	// Works only with default constructible types and non-single-pass iterators.
+	// FIXME: require/enable_if iterator_type is not single-pass.
+	template <typename t_range, bool t_should_remove_cvref>
+	class count_distinct
 	{
-		if (it == end)
-			return 0;
-
-		std::size_t retval{1};
-		auto prev(it);
-		it = std::next(it);
-		while (it != end)
+	public:
+		typedef decltype(std::begin(std::declval <t_range>()))	iterator_type;
+		typedef decltype(*std::declval <iterator_type>())		iterator_value_type;
+		typedef std::conditional_t <
+			t_should_remove_cvref,
+			std::remove_cvref_t <iterator_value_type>,
+			iterator_value_type
+		>														value_type_;
+		
+		struct call_type
 		{
-			if (*it != *prev)
-				++retval;
-
-			prev = it;
-			it = std::next(it);
+			typedef value_type_ value_type;
+			
+			value_type	value{};
+			std::size_t	size{};
+			bool		is_valid{false};
+			
+		public:
+			call_type() = default;
+			
+			call_type(iterator_value_type &&value_):
+				value(std::forward <iterator_value_type>(value_)),
+				size(1),
+				is_valid(true)
+			{
+			}
+		};
+		
+	protected:
+		iterator_type	m_it;
+		iterator_type	m_end;
+		
+	public:
+		count_distinct() = default;
+		
+		count_distinct(t_range &range): // Make sure the range is owned by someone else.
+			m_it(std::begin(range)),
+			m_end(std::end(range))
+		{
 		}
-
-		return retval;
+		
+		call_type operator()()
+		{
+			if (m_it == m_end)
+				return {};
+			
+			call_type retval(*m_it);
+			++m_it;
+			while (m_it != m_end && *m_it == retval.value)
+			{
+				++retval.size;
+				++m_it;
+			}
+			
+			return retval;
+		}
+	};
+	
+	
+	template <bool t_should_remove_cvref, typename t_range>
+	auto make_count_distinct(t_range &range) -> count_distinct <t_range, t_should_remove_cvref>
+	{
+		return {range};
 	}
 }
 
