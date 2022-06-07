@@ -1,0 +1,15 @@
+# Copyright (c) 2022 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"founder_graph_tool"
+purpose		"Perform operations on a founder graph."
+
+option	"index"							i	"Index input"								string	typestr = "filename"	 											required
+
+defmode "Output founder graph information"
+modeoption	"describe"					D	"Output founder graph information"											mode = "Output founder graph information"	required
+
+defmode "Compare founder graphs"			modedesc = "Compare two founder graphs"
+modeoption	"compare-founder-graphs"	C	"Compare two founder graphs"												mode = "Compare founder graphs"				required
+modeoption	"rhs-index"					r	"Index compared to"							string	typestr = "filename"	mode = "Compare founder graphs" 			required
+
