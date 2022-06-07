@@ -1,668 +1,431 @@
 /*
- * Copyright (c) 2021 Tuukka Norri
+ * Copyright (c) 2021-2022 Tuukka Norri
  * This code is licensed under MIT license (see LICENSE for details).
  */
 
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 #include <cereal/archives/portable_binary.hpp>
 #include <cereal/types/string.hpp>
-#include <compare>
-#include <founder_graphs/basic_types.hh>
-#include <founder_graphs/founder_graph_index.hh>
-#include <founder_graphs/msa_reader.hh>
-#include <founder_graphs/segment_cmp.hh>
-#include <iostream>
+#include <filesystem>
+#include <founder_graphs/founder_graph_indices/dispatch_concurrent_builder.hh>
+#include <founder_graphs/founder_graph_indices/path_index.hh>
+#include <libbio/file_handle.hh>
 #include <libbio/file_handling.hh>
-#include <libbio/utility.hh>
-#include <range/v3/view/enumerate.hpp>
-#include <range/v3/view/reverse.hpp>
-#include <set>
+#include <optional>
+#include <sdsl/construct.hpp>
 #include <string>
 #include "cmdline.h"
 
 namespace fg	= founder_graphs;
+namespace fgi	= founder_graphs::founder_graph_indices;
+namespace fs	= std::filesystem;
 namespace lb	= libbio;
+namespace ios	= boost::iostreams;
 namespace rsv	= ranges::views;
 
 
 namespace {
 	
-	struct segment_properties
+	constexpr bool logical_xor(bool const aa, bool const bb)
 	{
-		std::size_t segment_number{SIZE_MAX};
-		std::size_t count{};
-		std::size_t prefixes{};
-		std::size_t edges{};
-		
-		segment_properties() = default;
-		
-		segment_properties(
-			std::size_t const segment_number_,
-			std::size_t const count_,
-			std::size_t const prefixes_,
-			std::size_t const edges_
-		):
-			segment_number(segment_number_),
-			count(count_),
-			prefixes(prefixes_),
-			edges(edges_)
-		{
-		}
-	};
-	
-	
-	typedef std::map <std::string, segment_properties, fg::segment_cmp>			segment_map;
-	typedef std::multimap <std::string, segment_properties, fg::segment_cmp>	segment_buffer_type;
-	
-	
-	class output_handler
-	{
-	protected:
-		bool m_should_skip_output{};
-
-	public:
-		output_handler(bool const should_skip_output):
-			m_should_skip_output(should_skip_output)
-		{
-		}
-
-		virtual ~output_handler() {}
-		virtual bool needs_properties() const = 0;
-		virtual void output_header(fg::length_type const block_count) {}
-		virtual void output(std::size_t const block_idx, segment_map const &segments) = 0;
-		virtual void finish() {}
-	};
-	
-	
-	class indexable_text_output_handler final : public output_handler
-	{
-	protected:
-		bool m_should_skip_trailing_zero{};
-
-	public:
-		indexable_text_output_handler(bool const should_skip_trailing_zero, bool const should_skip_output):
-			output_handler(should_skip_output),
-			m_should_skip_trailing_zero(should_skip_trailing_zero)
-		{
-		}
-
-		bool needs_properties() const override { return false; }
-		
-		void output(std::size_t const block_idx, segment_map const &segments) override
-		{
-			if (m_should_skip_output)
-				return;
-			
-			// Output.
-			for (auto const &kv : segments)
-			{
-				std::cout << '#';
-				std::copy(kv.first.crbegin(), kv.first.crend(), std::ostream_iterator <char>(std::cout));
-			}
-		}
-
-		void finish() override
-		{
-			if (!m_should_skip_trailing_zero)
-				std::cout << '\0';
-		}
-	};
-	
-	
-	class block_content_output_handler : public output_handler
-	{
-	protected:
-		bool m_should_omit_segments{};
-		
-	public:
-		block_content_output_handler(bool const should_omit_segments, bool const should_skip_output):
-			output_handler(should_skip_output),
-			m_should_omit_segments(should_omit_segments)
-		{
-		}
-		
-		bool needs_properties() const final { return true; }
-	};
-	
-	
-	class block_content_tsv_output_handler final : public block_content_output_handler
-	{
-	public:
-		using block_content_output_handler::block_content_output_handler;
-		
-		void output_header(fg::length_type const block_count) override
-		{
-			if (m_should_skip_output)
-				return;
-
-			// Output segments one per line with prefix counts.
-			if (m_should_omit_segments)
-				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT_LENGTH\n";
-			else
-				std::cout << "BLOCK_INDEX\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT\n";
-		}
-		
-		void output(std::size_t const block_idx, segment_map const &segments) override
-		{
-			if (m_should_skip_output)
-				return;
-
-			if (m_should_omit_segments)
-			{
-				for (auto const &kv : segments)
-					std::cout << block_idx << '\t' << kv.second.prefixes << '\t' << kv.second.edges << '\t' << kv.first.size() << '\n';
-			}
-			else
-			{
-				for (auto const &kv : segments)
-					std::cout << block_idx << '\t' << kv.second.prefixes << '\t' << kv.second.edges << '\t' << kv.first << '\n';
-			}
-		}
-	};
-	
-	
-	class block_content_binary_output_handler final : public block_content_output_handler
-	{
-	protected:
-		cereal::PortableBinaryOutputArchive m_archive{std::cout};
-			
-	public:
-		using block_content_output_handler::block_content_output_handler;
-		
-		void output_header(fg::length_type const block_count) override
-		{
-			if (m_should_skip_output)
-				return;
-
-			m_archive(cereal::make_size_tag(block_count));
-		}
-		
-		void output(std::size_t const block_idx, segment_map const &segments) override
-		{
-			if (m_should_skip_output)
-				return;
-
-			fg::length_type segment_count(segments.size());
-			m_archive(cereal::make_size_tag(segment_count));
-			
-			if (m_should_omit_segments)
-			{
-				for (auto const &kv : segments)
-				{
-					fg::length_type prefix_count(kv.second.prefixes);
-					fg::length_type edge_count(kv.second.edges);
-					fg::length_type segment_length(kv.first.size());
-					m_archive(prefix_count);
-					m_archive(edge_count);
-					m_archive(segment_length);
-				}
-			}
-			else
-			{
-				for (auto const &kv : segments)
-				{
-					fg::length_type prefix_count(kv.second.prefixes);
-					fg::length_type edge_count(kv.second.edges);
-					m_archive(prefix_count);
-					m_archive(edge_count);
-					m_archive(kv.first);
-				}
-			}
-		}
-	};
-
-
-	void read_block_contents(char const *block_contents_path, bool const should_read_segments)
-	{
-		lb::file_istream stream;
-		lb::open_file_for_reading(block_contents_path, stream);
-		cereal::PortableBinaryInputArchive archive(stream);
-		
-		// Read the header.
-		fg::length_type block_count{};
-		archive(cereal::make_size_tag(block_count));
-		
-		if (should_read_segments)
-		{
-			std::cout << "BLOCK\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT\n";
-			
-			std::string segment;
-			for (fg::length_type j(0); j < block_count; ++j)
-			{
-				// Read the segment count.
-				fg::length_type segment_count{};
-				archive(cereal::make_size_tag(segment_count));
-				
-				for (fg::length_type i(0); i < segment_count; ++i)
-				{
-					segment.clear();
-					
-					fg::length_type prefix_count{};
-					fg::length_type edge_count{};
-					archive(prefix_count);
-					archive(edge_count);
-					archive(segment);
-					std::cout << j << '\t' << prefix_count << '\t' << edge_count << '\t' << segment << '\n';
-				}
-			}
-		}
-		else
-		{
-			std::cout << "BLOCK\tPREFIX_COUNT\tEDGE_COUNT\tSEGMENT_LENGTH\n";
-
-			for (fg::length_type j(0); j < block_count; ++j)
-			{
-				// Read the segment count.
-				fg::length_type segment_count{};
-				archive(cereal::make_size_tag(segment_count));
-				
-				for (fg::length_type i(0); i < segment_count; ++i)
-				{
-					fg::length_type prefix_count{};
-					fg::length_type edge_count{};
-					fg::length_type segment_length{};
-					std::cout << j << '\t' << prefix_count << '\t' << edge_count << '\t' << segment_length << '\n';
-				}
-			}
-		}
+		return !((aa && bb) || (!(aa || bb)));
 	}
 	
 	
-	// For assigning std::span <char> to std::string.
-	void remove_gaps_and_assign(std::span <char> const src, std::string &dst)
+	std::optional <std::string> make_optional(char const *str)
 	{
-		dst.resize(src.size());
-		auto const res(std::copy_if(src.begin(), src.end(), dst.begin(), [](auto const cc){
-			return '-' != cc;
-		}));
-		dst.resize(res - dst.begin());
+		if (str)
+			return {str};
+		
+		return {std::nullopt};
 	}
-
-
-	std::string compare_for_debugging(std::span <char> const lhs_, std::string const &rhs_)
+	
+	
+	// Postcondition: path_template contains the path of the temporary file.
+	template <typename t_stream>
+	void open_temporary_file_for_rw(std::string &path_template, std::size_t const suffix_length, t_stream &stream)
 	{
-		std::string_view lhs(lhs_.data(), lhs_.size());
-		std::string_view rhs(rhs_);
-		for (auto const &[i, tup] : rsv::enumerate(rsv::zip(lhs, rhs)))
+		// Open a temporary file.
+		lb::file_handle temp_handle(lb::open_temporary_file_for_rw(path_template, suffix_length));
+	
+		// Make the stream not own the handle.
+		stream.open(temp_handle.get(), ios::close_handle);
+		temp_handle.release();
+		stream.exceptions(std::istream::badbit);
+	}
+	
+	
+	template <typename t_lhs_stream, typename t_rhs_stream>
+	void reverse_indexable_text(t_lhs_stream &forward_stream, t_rhs_stream &reverse_stream)
+	{
+		auto const fd(forward_stream->handle());
+		
+		// Determine the file size and the optimal block size.
+		// It might be a good idea to do the same for reverse_stream but that
+		// would complicate things. Besides, the streams have their own buffers.
+		struct stat sb{};
+		if (-1 == fstat(fd, &sb))
+			throw std::runtime_error(strerror(errno));
+		
+		std::size_t write_pos(sb.st_size);
+		std::vector <char> buffer(sb.st_blksize, 0);
+		
+		ios::seek(forward_stream, 0, std::ios_base::beg);
+		libbio_assert_eq(0, errno);
+
+		do
 		{
-			auto const &[lhsc, rhsc] = tup;
-			if (lhsc != rhsc)
-			{
-				if (10 < i)
-					return boost::str(boost::format("“…%s” vs. “…%s”") % lhs.substr(i - 10, 11) % rhs.substr(i - 10, 11));
-				else
-					return boost::str(boost::format("“%s” vs. “%s”") % lhs.substr(0, 1 + i) % rhs.substr(0, 1 + i));
-			}
-		}
+			// Read and move the writing stream to the corresponding position.
+			auto const read_count(ios::read(forward_stream, buffer.data(), buffer.size()));
+			libbio_always_assert_lte(read_count, write_pos);
+			libbio_assert_eq(0, errno);
+			write_pos -= read_count;
+			ios::seek(reverse_stream, write_pos, std::ios_base::beg);
+			libbio_assert_eq(0, errno);
 
-		return "(No differences found.)";
+			// Reverse the buffer contents and write.
+			std::reverse(buffer.begin(), buffer.begin() + read_count);
+			ios::write(reverse_stream, buffer.data(), read_count);
+			libbio_assert_eq(0, errno);
+		} while (write_pos);
+		
+		reverse_stream << std::flush;
 	}
 	
 	
-	void handle_block_range(
-		fg::msa_reader &reader,
-		std::size_t const lb,
-		std::size_t const rb,
-		output_handler const &handler,
-		segment_map &segments,
-		segment_buffer_type &segment_buffer,
-		std::vector <std::size_t> &segment_numbers_by_seq_idx,
-		std::vector <segment_map::mapped_type *> &segments_by_segment_number
+	void build_csas_and_wait(
+		std::string const &text_path,
+		std::string const &reverse_text_path,
+		dispatch_group_t group,
+		dispatch_queue_t queue,
+		fgi::path_index &index
 	)
 	{
-		// Determine the distinct segments in a block and number them.
-		// The segments are placed in the segment map and their numbers
-		// by sequence index in segment_numbers_by_seq_idx. The intention is that
-		// the in-edge and out-edge counts can be determined from the output.
+		// This would likely be more efficient if it were somehow possible to co-ordinate the I/O operations
+		// when building the CSAs.
+		dispatch_group_async(group, queue, ^{
+			fgi::csa_type csa;
+			sdsl::construct(csa, text_path, 1);
+			index.set_csa(std::move(csa));
+		});
 		
-		// Move the nodes to the buffer.
-		while (!segments.empty())
-		{
-			auto nh(segments.extract(segments.begin()));
-			nh.key().clear();
-			segment_buffer.insert(segment_buffer.end(), std::move(nh));
-		}
+		dispatch_group_async(group, queue, ^{
+			fgi::reverse_csa_type csa;
+			sdsl::construct(csa, reverse_text_path, 1);
+			index.set_reverse_csa(std::move(csa));
+		});
 		
-		// Fill for extra safety.
-		std::fill(segment_numbers_by_seq_idx.begin(), segment_numbers_by_seq_idx.end(), SIZE_MAX);
-		
-		// Currently fill_buffer() returns after the callback has finished.
-		reader.fill_buffer(
-			lb,
-			rb,
-			[
-				&segments,
-				&segment_buffer,
-				&segment_numbers_by_seq_idx,
-				&segments_by_segment_number
-			](fg::msa_reader::span_vector const &spans){
-				
-				std::size_t segment_counter{};
-				segments_by_segment_number.clear();
-				
-				libbio_assert_eq_msg(spans.size(), segment_numbers_by_seq_idx.size(), "spans.size(): ", spans.size(), " segment_numbers_by_seq_idx.size(): ", segment_numbers_by_seq_idx.size());
-				for (auto &&[seq_idx, tup] : rsv::enumerate(rsv::zip(spans, segment_numbers_by_seq_idx)))
-				{
-					auto &[span, segment_number] = tup;
-					
-					// Check if this segment has already been handled.
-					auto const it(segments.find(span));
-					if (segments.end() == it)
-					{
-						// New segment, add to the set.
-						if (segment_buffer.empty())
-						{
-							std::string key;
-							remove_gaps_and_assign(span, key);
-							auto const res(segments.emplace(
-								std::piecewise_construct,
-								std::forward_as_tuple(std::move(key)),
-								std::forward_as_tuple(segment_counter, 1, 0, 0)
-							));
-							
-							libbio_assert_msg(res.second, "Unable to insert text even though find() returned end(). Segment and found text: ", compare_for_debugging(span, res.first->first), "\nlhs: “", std::string_view(span.data(), span.size()), "”\nrhs: “", res.first->first, "”");
-							auto &kv(*res.first);
-							segments_by_segment_number.emplace_back(&kv.second);
-						}
-						else
-						{
-							auto nh(segment_buffer.extract(segment_buffer.begin()));
-							remove_gaps_and_assign(span, nh.key());
-							nh.mapped() = segment_properties(segment_counter, 1, 0, 0);
-							auto const res(segments.insert(std::move(nh)));
-							
-							libbio_assert(res.inserted);
-							auto &kv(*res.position);
-							segments_by_segment_number.emplace_back(&kv.second);
-						}
-						
-						segment_number = segment_counter;
-						++segment_counter;
-					}
-					else
-					{
-						// Existing segment.
-						auto &properties(it->second);
-						++properties.count;
-						segment_number = properties.segment_number;
-					}
-				}
-				
-				libbio_assert_eq(segment_counter, segments_by_segment_number.size());
-				
-				return true;
-			}
-		);
-		
-		if (handler.needs_properties())
-		{
-			// Count the prefixes.
-			// Use a naïve algorithm since the amount of data is expected to be small,
-			// i.e. just check if a segment is a prefix of the succeeding ones in the lexicographic order.
-			auto it(segments.begin());
-			auto const end(segments.end());
-			while (it != end)
-			{
-				libbio_assert_eq(0, it->second.prefixes);
-				auto next_it(std::next(it));
-				while (next_it != end && next_it->first.starts_with(it->first))
-				{
-					++it->second.prefixes;
-					++next_it;
-				}
-				++it;
-			}
-		}
+		dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
 	}
 	
 	
-	void generate_indexable_text(
-		fg::msa_reader &reader,
-		char const *sequence_list_path,
-		char const *segmentation_path,
-		output_handler &handler,
-		bool const should_output_block_contents
-	)
+	struct indexable_sequence_output_delegate final : public fgi::indexable_sequence_output_delegate
 	{
-		// Open the segmentation.
+		std::ostream &os; // Not owned.
+		
+		indexable_sequence_output_delegate(std::ostream &os_):
+			os(os_)
+		{
+		}
+		
+		virtual void output_segment(
+			std::size_t const block_idx,
+			std::size_t const file_offset,
+			std::size_t const seg_idx,
+			std::size_t const seg_size
+		) override
+		{
+			os << "Segment\t" << block_idx << '\t' << file_offset << '\t' << seg_idx << '\t' << seg_size << '\n';
+		}
+		
+		virtual void output_edge(
+			std::size_t const block_idx,
+			std::size_t const file_offset,
+			std::size_t const lhs_seg_idx,
+			std::size_t const rhs_seg_idx,
+			std::size_t const lhs_seg_size,
+			std::size_t const rhs_seg_size
+		) override
+		{
+			os << "Edge\t" << block_idx << '\t' << file_offset << '\t' << lhs_seg_idx << '\t' << rhs_seg_idx << '\t' << lhs_seg_size << '\t' << rhs_seg_size << '\n';
+		}
+		
+		virtual void finish() override { os << std::flush; }
+	};
+	
+	
+	struct dispatch_concurrent_builder_delegate : public fgi::dispatch_concurrent_builder_delegate
+	{
+		virtual void reading_bit_vector_values() override
+		{
+			lb::log_time(std::cerr) << " Reading bit vector values…\n";
+		}
+		
+		virtual void processing_bit_vector_values() override
+		{
+			lb::log_time(std::cerr) << " Processing bit vector values…\n";
+		}
+		
+		virtual void filling_integer_vectors() override
+		{
+			lb::log_time(std::cerr) << " Filling integer vectors…\n";
+		}
+	};
+	
+	
+	class index_builder
+	{
+	protected:
+		lb::dispatch_ptr <dispatch_queue_t>	m_serial_queue;
+		std::string							m_sequence_list_path;
+		std::string							m_segmentation_path;
+		std::optional <std::string>			m_indexable_text_input_path;
+		std::optional <std::string>			m_reverse_indexable_text_input_path;
+		std::optional <std::string>			m_indexable_text_output_path;
+		std::optional <std::string>			m_indexable_text_stats_output_path;
+		std::optional <std::string>			m_reverse_indexable_text_output_path;
+		std::optional <std::string>			m_graphviz_output_path;
+		std::optional <std::string>			m_index_input_path;
+		std::uint16_t						m_buffer_count{};
+		std::uint16_t						m_chunk_size{};
+		bool								m_input_is_bgzipped{};
+		bool								m_should_skip_csa{};
+		bool								m_should_skip_support{};
+		bool								m_should_skip_output{};
+	
+	public:
+		index_builder() = default;
+		
+		index_builder(gengetopt_args_info const &args_info):
+			m_serial_queue(dispatch_queue_create("fi.iki.tsnorri.founder-graphs-semi-repeat-free.serial-queue", DISPATCH_QUEUE_SERIAL)),
+			m_sequence_list_path(args_info.sequence_list_arg),
+			m_segmentation_path(args_info.segmentation_arg),
+			m_indexable_text_input_path(make_optional(args_info.indexable_text_input_arg)),
+			m_reverse_indexable_text_input_path(make_optional(args_info.reverse_indexable_text_input_arg)),
+			m_indexable_text_output_path(make_optional(args_info.indexable_text_output_arg)),
+			m_indexable_text_stats_output_path(make_optional(args_info.indexable_text_stats_output_arg)),
+			m_reverse_indexable_text_output_path(make_optional(args_info.reverse_indexable_text_output_arg)),
+			m_graphviz_output_path(make_optional(args_info.graphviz_output_arg)),
+			m_index_input_path(make_optional(args_info.index_input_arg)),
+			m_buffer_count(args_info.buffer_count_arg),
+			m_chunk_size(args_info.chunk_size_arg),
+			m_input_is_bgzipped(args_info.bgzip_input_given),
+			m_should_skip_csa(args_info.skip_csa_given),
+			m_should_skip_support(args_info.skip_support_given),
+			m_should_skip_output(args_info.skip_output_given)
+		{
+		}
+		
+		void process();
+		void operator()() { process(); } // For lb::dispatch().
+	};
+	
+	
+	void index_builder::process()
+	{
+		fgi::path_index index;
+		lb::dispatch_ptr <dispatch_queue_t> concurrent_queue(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), true);
+		lb::dispatch_ptr <dispatch_group_t> group(dispatch_group_create());
+		
+		// Load if requested.
+		if (m_index_input_path)
+		{
+			lb::log_time(std::cerr) << "Loading the index…\n";
+			lb::file_istream stream;
+			lb::open_file_for_reading(*m_index_input_path, stream);
+			cereal::PortableBinaryInputArchive iarchive(stream);
+			iarchive(index);
+		}
+		
+		// Build an uncompressed founder graph.
 		lb::log_time(std::cerr) << "Loading the segmentation…\n";
-		lb::file_istream segmentation_stream;
-		lb::open_file_for_reading(segmentation_path, segmentation_stream);
-		cereal::PortableBinaryInputArchive archive(segmentation_stream);
-		
-		// Read the sequence file paths.
-		{
-			lb::log_time(std::cerr) << "Loading the sequences…\n";
-			lb::file_istream sequence_list_stream;;
-			lb::open_file_for_reading(sequence_list_path, sequence_list_stream);
+		fgi::block_graph graph;
+		fgi::read_optimized_segmentation(
+			m_sequence_list_path.c_str(),
+			m_segmentation_path.c_str(),
+			m_input_is_bgzipped,
+			graph
+		);
 			
-			std::string path;
-			while (std::getline(sequence_list_stream, path))
-				reader.add_file(path);
+		if (m_graphviz_output_path)
+		{
+			lb::log_time(std::cerr) << "Outputting the uncompressed founder graph as a Graphviz file…\n";
+			lb::file_ostream stream;
+			lb::open_file_for_writing(*m_graphviz_output_path, stream, lb::writing_open_mode::CREATE);
+			fgi::write_graphviz(graph, stream);
 		}
 		
-		reader.prepare();
-		
-		// Read the block boundaries and generate the text.
-		lb::log_time(std::cerr) << "Processing…\n";
-		fg::length_type block_count{};
-		archive(cereal::make_size_tag(block_count));
-		
-		segment_buffer_type segment_buffer;
-		
-		handler.output_header(block_count);
-		
-		if (should_output_block_contents)
+		// Check if the indexable text should be built.
+		if (!m_should_skip_csa)
 		{
-			auto const seq_count(reader.handle_count());
-			segment_map lhs_segments;
-			segment_map rhs_segments;
-			std::vector <std::size_t> lhs_segment_numbers_by_seq_idx(seq_count, SIZE_MAX);
-			std::vector <std::size_t> rhs_segment_numbers_by_seq_idx(seq_count, SIZE_MAX);
-			std::vector <segment_map::mapped_type *> lhs_segments_by_segment_number;
-			std::vector <segment_map::mapped_type *> rhs_segments_by_segment_number;
-			std::set <std::pair <std::size_t, std::size_t>> seen_edges;
-			
-			fg::length_type lb{};
-			if (block_count)
+			if (m_indexable_text_input_path && m_reverse_indexable_text_input_path)
 			{
-				// First block.
-				lb::log_time(std::cerr) << "Block 1/" << block_count << "…\n";
-				
-				fg::length_type rb{};
-				archive(rb);
-				
-				handle_block_range(
-					reader,
-					lb,
-					rb,
-					handler,
-					lhs_segments,
-					segment_buffer,
-					lhs_segment_numbers_by_seq_idx,
-					lhs_segments_by_segment_number
-				);
-					
-				lb = rb;
-				
-				// Rest of the blocks.
-				for (fg::length_type i(1); i < block_count; ++i)
-				{
-					if (0 == (1 + i) % 1000)
-						lb::log_time(std::cerr) << "Block " << (1 + i) << '/' << block_count << "…\n";
-					
-					// Read the next right bound.
-					archive(rb);
-					
-					handle_block_range(
-						reader,
-						lb,
-						rb,
-						handler,
-						rhs_segments,
-						segment_buffer,
-						rhs_segment_numbers_by_seq_idx,
-						rhs_segments_by_segment_number
-					);
-					
-					// Count the distinct edges.
-					seen_edges.clear();
-					for (auto const &[lhs, rhs] : rsv::zip(lhs_segment_numbers_by_seq_idx, rhs_segment_numbers_by_seq_idx))
-						seen_edges.emplace(lhs, rhs);
-					
-					for (auto const &[lhs, rhs] : seen_edges)
-					{
-						libbio_assert_neq(lhs, SIZE_MAX);
-						libbio_assert_neq(rhs, SIZE_MAX);
-						auto &lhs_seg(*lhs_segments_by_segment_number[lhs]);
-						auto &rhs_seg(*rhs_segments_by_segment_number[rhs]);
-						++lhs_seg.edges; // Out-edges
-						++rhs_seg.edges; // In-edges
-					}
-					
-					// Output.
-					handler.output(i - 1, lhs_segments);
-					
-					// Update the pointers.
-					lb = rb;
-					
-					{
-						using std::swap;
-						swap(lhs_segments, rhs_segments);
-						swap(lhs_segment_numbers_by_seq_idx, rhs_segment_numbers_by_seq_idx);
-						swap(lhs_segments_by_segment_number, rhs_segments_by_segment_number);
-					}
-				}
-				
-				// Output the final block.
-				handler.output(block_count - 1, lhs_segments);
-			}
-		}
-		else
-		{
-			// Output a text that consists of concatenated pairs of segments separated by ‘#’ characters.
-			// Maintain two ranges, [lb, mid) and [mid, rb).
-			
-			segment_map segments;
-			// These two are not used here but handle_block_range() currently fills them anyway.
-			std::vector <std::size_t> segment_numbers_by_seq_idx(reader.handle_count(), SIZE_MAX);
-			std::vector <segment_map::mapped_type *> segments_by_segment_number;
-			
-			fg::length_type lb{};
-			if (block_count)
-			{
-				fg::length_type mid{};
-				archive(mid);
-				for (fg::length_type i(1); i < block_count; ++i)
-				{
-					if (0 == i % 1000)
-						lb::log_time(std::cerr) << "Block " << i << '/' << (block_count - 1) << "…\n";
-					
-					// Read the next right bound.
-					fg::length_type rb{};
-					archive(rb);
-					
-					handle_block_range(
-						reader,
-						lb,
-						rb,
-						handler,
-						segments,
-						segment_buffer,
-						segment_numbers_by_seq_idx,
-						segments_by_segment_number
-					);
-					handler.output(i - 1, segments);
-					
-					// Update the pointers.
-					lb = mid;
-					mid = rb;
-				}
-			}
-		}
-
-		handler.finish();
-	}
-	
-	
-	void generate_indexable_text(
-		fg::msa_reader &reader,
-		char const *sequence_list_path,
-		char const *segmentation_path,
-		bool const block_contents_given,
-		bool const tsv_given,
-		bool const omit_segments_given,
-		bool const omit_trailing_zero_given,
-		bool const skip_output_given
-	)
-	{
-		if (block_contents_given)
-		{
-			if (omit_trailing_zero_given)
-				std::cerr << "WARNING: --omit-trailing-zero has no effect when outputting block contents.\n";
-			
-			if (tsv_given)
-			{
-				block_content_tsv_output_handler handler(omit_segments_given, skip_output_given);
-				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+				lb::log_time(std::cerr) << "Building the CSA using the given input…\n";
+				build_csas_and_wait(*m_indexable_text_input_path, *m_reverse_indexable_text_input_path, *group, *concurrent_queue, index);
 			}
 			else
 			{
-				block_content_binary_output_handler handler(omit_segments_given, skip_output_given);
-				generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+				lb::log_time(std::cerr) << "Generating the indexable text…\n";
+				lb::file_iostream forward_stream;
+				lb::file_ostream reverse_stream;
+			
+				// Build the indexable and reverse texts.
+				if (m_indexable_text_output_path)
+					lb::open_file_for_rw(*m_indexable_text_output_path, forward_stream, lb::writing_open_mode::CREATE);
+				else
+				{
+					m_indexable_text_output_path = "indexable-text.XXXXXX.txt";
+					open_temporary_file_for_rw(*m_indexable_text_output_path, 4, forward_stream); // ".txt"
+				}
+			
+				if (m_reverse_indexable_text_output_path)
+					lb::open_file_for_writing(*m_reverse_indexable_text_output_path, reverse_stream, lb::writing_open_mode::CREATE);
+				else
+				{
+					m_reverse_indexable_text_output_path = "reverse-indexable-text.XXXXXX.txt";
+					open_temporary_file_for_rw(*m_reverse_indexable_text_output_path, 4, reverse_stream); // ".txt"
+				}
+			
+				lb::log_time(std::cerr) << "Writing to " << (*m_indexable_text_output_path) << " and to " << (*m_reverse_indexable_text_output_path) << "…\n";
+				
+				if (m_indexable_text_stats_output_path)
+				{
+					lb::file_ostream stats_stream;
+					lb::log_time(std::cerr) << "Writing segment offsets to " << (*m_indexable_text_stats_output_path) << "…\n";
+					lb::open_file_for_writing(*m_indexable_text_stats_output_path, stats_stream, lb::writing_open_mode::CREATE);
+					indexable_sequence_output_delegate delegate(stats_stream);
+					
+					fgi::write_indexable_sequence(graph, forward_stream, delegate);
+				}
+				else
+				{
+					fgi::write_indexable_sequence(graph, forward_stream);
+				}
+				
+				reverse_indexable_text(forward_stream, reverse_stream);
+				
+				// Build the indices.
+				lb::log_time(std::cerr) << "Building the CSAs…\n";
+				build_csas_and_wait(*m_indexable_text_output_path, *m_reverse_indexable_text_output_path, *group, *concurrent_queue, index);
 			}
 		}
-		else
+		
+		if (!m_should_skip_support)
 		{
-			if (tsv_given || omit_segments_given)
-				std::cerr << "WARNING: --tsv and --omit-segments do not have an effect when outputting text for BWT indexing.\n";
+			// Check that we have a CSA.
+			auto const csa_size(index.get_csa().size());
+			auto const reverse_csa_size(index.get_reverse_csa().size());
+			if (!csa_size)
+			{
+				lb::log_time(std::cerr) << "ERROR: The forward CSA is empty.\n";
+				std::exit(EXIT_FAILURE);
+			}
 			
-			indexable_text_output_handler handler(omit_trailing_zero_given, skip_output_given);
-			generate_indexable_text(reader, sequence_list_path, segmentation_path, handler, block_contents_given);
+			if (csa_size != reverse_csa_size)
+			{
+				lb::log_time(std::cerr) << "ERROR: The forward and reverse CSAs have different sizes (" << csa_size << " and " << reverse_csa_size << ").\n";
+				std::exit(EXIT_FAILURE);
+			}
+			
+			// Build the supporting data structures.
+			lb::log_time(std::cerr) << "Building the supporting data structures…\n";
+			fgi::path_index_support support;
+			fgi::dispatch_concurrent_builder builder(concurrent_queue, m_serial_queue, m_buffer_count);
+			dispatch_concurrent_builder_delegate delegate;
+			builder.build_supporting_data_structures(graph, index.get_csa(), index.get_reverse_csa(), support, delegate);
+			index.set_support(std::move(support));
 		}
-	}
-
-
-	std::ostream &synchronize_ostream(std::ostream &stream)
-	{
-		// FIXME: This should return a std::osyncstream but my libc++ doesn’t yet have it.
-		return stream;
+		
+		// Output if needed.
+		if (!m_should_skip_output && (!(m_should_skip_csa && m_should_skip_support)))
+		{
+			lb::log_time(std::cerr) << "Writing the index to stdout…\n";
+			cereal::PortableBinaryOutputArchive oarchive(std::cout);
+			oarchive(index);
+			std::cout << std::flush;
+		}
+		
+		std::exit(EXIT_SUCCESS);
 	}
 	
 	
-	struct founder_graph_index_construction_delegate : public fg::founder_graph_index_construction_delegate
+	void output_space_breakdown(char const *index_path, bool const should_output_json)
 	{
-		void zero_occurrences_for_segment(
-			fg::length_type const block_idx,
-			fg::length_type const seg_idx,
-			std::string const &segment,
-			char const cc,
-			fg::length_type const pos
-		) override
+		fgi::path_index index;
+		
 		{
-			synchronize_ostream(std::cerr) << "ERROR: got zero occurrences when searching for ‘" << cc << "’ at index " << pos << " of segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+			lb::file_istream stream;
+			lb::open_file_for_reading(index_path, stream);
+			cereal::PortableBinaryInputArchive iarchive(stream);
+			iarchive(index);
 		}
 		
-		void unexpected_number_of_occurrences_for_segment(
-			fg::length_type const block_idx,
-			fg::length_type const seg_idx,
-			std::string const &segment,
-			fg::length_type const expected_count,
-			fg::length_type const actual_count
-		) override
+		if (should_output_json)
+			sdsl::write_structure <sdsl::JSON_FORMAT>(index, std::cout);
+		else
+			sdsl::write_structure <sdsl::HTML_FORMAT>(index, std::cout);
+		std::cout << std::flush;
+	}
+	
+	
+	static index_builder s_index_builder;
+	
+	
+	// Try to make sure that this function does not get inlined since the
+	// try-catch block can somehow problems with dispatch_main()
+	// (“terminate called without an active exception”).
+	void __attribute__((noinline)) do_process(gengetopt_args_info const &args_info) noexcept
+	{
+		try
 		{
-			synchronize_ostream(std::cerr) << "ERROR: got " << actual_count << " occurrences while " << expected_count << " were expected when searching for segment " << seg_idx << " (block " << block_idx << "): “" << segment << "”.\n";
+			// Check if space breakdown is to be output.
+			if (args_info.space_breakdown_given)
+			{
+				if (!args_info.index_input_arg)
+				{
+					std::cerr << "ERROR: --space-breakdown was given but --index-input was not.\n";
+					std::exit(EXIT_FAILURE);
+				}
+				
+				output_space_breakdown(args_info.index_input_arg, false);
+				std::exit(EXIT_SUCCESS);
+			}
+			
+			// Otherwise build the index.
+			if (logical_xor(args_info.indexable_text_input_arg, args_info.reverse_indexable_text_input_arg))
+			{
+				std::cerr << "ERROR: Either none or both of --indexable-text-input and --reverse-indexable-text-input must be given.\n";
+				std::exit(EXIT_FAILURE);
+			}
+			
+			if (args_info.buffer_count_arg <= 0)
+			{
+				std::cerr << "ERROR: Buffer count must be positive.\n";
+				std::exit(EXIT_FAILURE);
+			}
+			
+			if (args_info.chunk_size_arg <= 0)
+			{
+				std::cerr << "ERROR: Chunk size must be positive.\n";
+				std::exit(EXIT_FAILURE);
+			}
+			
+			s_index_builder = index_builder(args_info);
+			
+			lb::dispatch(s_index_builder).async <>(dispatch_get_main_queue());
 		}
-		
-		void position_in_b_already_set(fg::length_type const pos) override
+		catch (std::exception const &exc)
 		{
-			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in B already set.\n";
+			std::cerr << "Top-level exception handler caught an exception: " << exc.what() << ".\n";
+			std::exit(EXIT_FAILURE);
 		}
-		
-		void position_in_e_already_set(fg::length_type const pos) override
+		catch (...)
 		{
-			synchronize_ostream(std::cerr) << "ERROR: position " << pos << " in E already set.\n";
+			std::cerr << "Top-level exception handler caught a non-std::exception.\n";
+			std::exit(EXIT_FAILURE);
 		}
-	};
+	}
 }
 
 
@@ -688,67 +451,9 @@ int main(int argc, char **argv)
 	}
 	std::cerr << '\n';
 	
-	if (args_info.generate_indexable_texts_given)
-	{
-		if (args_info.gzip_input_given)
-		{
-			fg::bgzip_msa_reader reader;
-			generate_indexable_text(
-				reader,
-				args_info.sequence_list_arg,
-				args_info.segmentation_arg,
-				args_info.block_contents_given,
-				args_info.tsv_given,
-				args_info.omit_segments_given,
-				args_info.omit_trailing_zero_given,
-				args_info.skip_output_given
-			);
-		}
-		else
-		{
-			fg::text_msa_reader reader;
-			generate_indexable_text(
-				reader,
-				args_info.sequence_list_arg,
-				args_info.segmentation_arg,
-				args_info.block_contents_given,
-				args_info.tsv_given,
-				args_info.omit_segments_given,
-				args_info.omit_trailing_zero_given,
-				args_info.skip_output_given
-			);
-		}
-	}
-	else if (args_info.generate_index_given)
-	{
-		fg::founder_graph_index founder_index;
-		founder_index.build_csa(args_info.text_path_arg, args_info.sa_path_arg, args_info.bwt_path_arg, false);
-		if (args_info.only_build_csa_given)
-		{
-			cereal::PortableBinaryOutputArchive archive{std::cout};
-			archive(founder_index);
-			return EXIT_SUCCESS;
-		}
-
-		founder_graph_index_construction_delegate delegate;
-		if (founder_index.store_node_label_lexicographic_ranges(args_info.block_contents_path_arg, delegate))
-		{
-			cereal::PortableBinaryOutputArchive archive{std::cout};
-			archive(founder_index);
-			return EXIT_SUCCESS;
-		}
-
-		return EXIT_FAILURE;
-	}
-	else if (args_info.read_block_contents_given)
-	{
-		read_block_contents(args_info.read_block_contents_arg, !args_info.without_segments_given);
-	}
-	else
-	{
-		std::cerr << "Unknown mode given.\n";
-		return EXIT_FAILURE;
-	}
+	do_process(args_info);
 	
+	dispatch_main();
+	// Not reached.
 	return EXIT_SUCCESS;
 }

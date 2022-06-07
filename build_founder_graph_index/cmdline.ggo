@@ -1,30 +1,28 @@
-# Copyright (c) 2021 Tuukka Norri
+# Copyright (c) 2021-2022 Tuukka Norri
 # This code is licensed under MIT license (see LICENSE for details).
 
 package		"build_founder_graph_index"
 purpose		"Build a founder graph index from optimized segmentation"
-description	"Generates indexable texts from optimized founder graph segmentation and builds a founder graph index from that. The texts are the actual indexable text and the founder graph node labels separately. For generating indexable texts, compressed input needs to be in bgzip format, while for generating the actual index, gzip will suffice. When generating the text for the BWT index, a zero character will be appended by default in order to skip one step in SDSL’s construct() when building the index."
+description	"Generates a founder graph index from an optimized founder graph segmentation."
 
-option		"gzip-input"				z	"Input is (b)gzipped"										flag	off
+option	"index-input"					i	"Index to be processed or updated"				string	typestr = "filename"	optional
 
-defmode "Generate indexable texts"		modedesc = "Generate the indexable texts"
-modeoption	"generate-indexable-texts"	T	"Generate the indexable texts"																mode = "Generate indexable texts"		required
-modeoption	"sequence-list"				s	"Sequence list path"										string	typestr = "filename"	mode = "Generate indexable texts"		required
-modeoption	"segmentation"				e	"Optimized segmentation path"								string	typestr = "filename"	mode = "Generate indexable texts"		required
-modeoption	"block-contents"			b	"Output block contents"																		mode = "Generate indexable texts"		optional
-modeoption	"tsv"						-	"Output as TSV"																				mode = "Generate indexable texts"		optional
-modeoption	"omit-segments"				-	"Omit segments when outputting block contents"												mode = "Generate indexable texts"		optional
-modeoption	"omit-trailing-zero"		-	"Omit the trailing zero character from the indexable text"									mode = "Generate indexable texts"		optional
-modeoption	"skip-output"				-	"Skip output (for debugging)"																mode = "Generate indexable texts"		optional
+defmode "Build index"		modedesc = "Build a founder graph index"
+modeoption	"build-index"					B	"Build a founder graph index"												mode = "Build index"		required
+modeoption	"sequence-list"					s	"Sequence list path"						string	typestr = "filename"	mode = "Build index"		required
+modeoption	"segmentation"					e	"Optimized segmentation path"				string	typestr = "filename"	mode = "Build index"		required
+modeoption	"indexable-text-input"			t	"Indexable text input path"					string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"reverse-indexable-text-input"	T	"Indexable text input path"					string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"indexable-text-output"			o	"Indexable text output path"				string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"indexable-text-stats-output"	-	"Indexable text statistics output path"		string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"reverse-indexable-text-output"	O	"Indexable text output path"				string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"graphviz-output"				g	"Output founder graph in Graphviz format"	string	typestr = "filename"	mode = "Build index"		optional
+modeoption	"bgzip-input"					z	"Sequence input is bgzipped"												mode = "Build index"		optional
+modeoption	"chunk-size"					c	"Chunk size"								short	default = "4"			mode = "Build index"		optional
+modeoption	"buffer-count"					b	"Buffer count"								short	default = "16"			mode = "Build index"		optional
+modeoption	"skip-csa"						-	"Skip building the CSA"														mode = "Build index"		optional
+modeoption	"skip-support"					-	"Skip building the path index support"										mode = "Build index"		optional
+modeoption	"skip-output"					-	"Do not output the index (for debugging)"									mode = "Build index"		optional
 
-defmode "Generate founder graph index"	modedesc = "Generate a founder graph index from the indexable text and block contents"
-modeoption	"generate-index"			I	"Generate a founder graph index"															mode = "Generate founder graph index"	required
-modeoption	"text-path"					t	"Indexable text path"										string	typestr = "filename"	mode = "Generate founder graph index"	required
-modeoption	"sa-path"					-	"Precalculated suffix array path (in SDSL’s format)"		string	typestr = "filename"	mode = "Generate founder graph index"	optional
-modeoption	"bwt-path"					-	"Precalculated BWT path"									string	typestr = "filename"	mode = "Generate founder graph index"	optional
-modeoption	"block-contents-path"		l	"Block contents (as binary) path"							string	typestr = "filename"	mode = "Generate founder graph index"	required
-modeoption	"only-build-csa"			-	"Only build the CSA."																		mode = "Generate founder graph index"	optional
-
-defmode "Read block contents"			modedesc = "Read the block contents as stored with build_founder_graph_index -T -b"
-modeoption	"read-block-contents"		R	"Read the block contents from the given path"				string	typestr = "filename"	mode = "Read block contents"			required
-modeoption	"without-segments"			-	"Read segment lengths (--omit-segments given when writing)"									mode = "Read block contents"			optional
+defmode	"Space breakdown"	modedesc = "Output a space breakdown"
+modeoption	"space-breakdown"				S	"Output space breakdown of a built index"									mode = "Space breakdown"	required
