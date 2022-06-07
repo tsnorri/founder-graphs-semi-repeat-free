@@ -5,7 +5,10 @@ BUILD_PRODUCTS =	build_cst/build_cst \
 					build_founder_graph_index/build_founder_graph_index \
 					build_msa_index/build_msa_index \
 					find_founder_block_boundaries/find_founder_block_boundaries \
+					find_in_graph/find_in_graph \
 					founder_block_tool/founder_block_tool \
+					founder_graph_tool/founder_graph_tool \
+					inspect_block_graph/inspect_block_graph \
 					int_vector_tool/int_vector_tool \
 					msa_index_cmp/msa_index_cmp \
 					optimize_segmentation/optimize_segmentation
@@ -25,7 +28,10 @@ clean:
 	$(MAKE) -C build_sa clean
 	$(MAKE) -C build_msa_index clean
 	$(MAKE) -C find_founder_block_boundaries clean
+	$(MAKE) -C find_in_graph clean
 	$(MAKE) -C founder_block_tool clean
+	$(MAKE) -C founder_graph_tool clean
+	$(MAKE) -C inspect_block_graph clean
 	$(MAKE) -C int_vector_tool clean
 	$(MAKE) -C msa_index_cmp clean
 	$(MAKE) -C optimize_segmentation clean
@@ -51,8 +57,17 @@ build_sa/build_sa: lib/parallel-divsufsort/build/divsufsort.a
 find_founder_block_boundaries/find_founder_block_boundaries: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C find_founder_block_boundaries
 
+find_in_graph/find_in_graph: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C find_in_graph
+
 founder_block_tool/founder_block_tool: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C founder_block_tool
+
+founder_graph_tool/founder_graph_tool: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C founder_graph_tool
+
+inspect_block_graph/inspect_block_graph: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C inspect_block_graph
 
 int_vector_tool/int_vector_tool: $(LIBBIO_DEPENDENCIES)
 	$(MAKE) -C int_vector_tool

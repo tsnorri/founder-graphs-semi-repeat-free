@@ -42,6 +42,12 @@ namespace {
 		fg::length_type length() const { return rb - lb; }
 	};
 	
+	std::ostream &operator<<(std::ostream &os, interval const ii)
+	{
+		os << '[' << ii.lb << ", " << ii.rb << ')';
+		return os;
+	}
+	
 	struct interval_lb_cmp
 	{
 		bool operator()(interval const &lhs, interval const &rhs) const
@@ -237,6 +243,13 @@ namespace {
 		lb::log_time(std::cerr) << "Loading the input segmentation…\n";
 		std::vector <interval> input_segmentation;
 		auto const aligned_size(read_input(stream, input_segmentation));
+		
+		if (input_segmentation.empty())
+		{
+			std::cerr << "ERROR: Got an empty segmentation.\n";
+			std::exit(EXIT_FAILURE);
+		}
+		
 		lb::log_time(std::cerr) << "Sorting…\n";
 		std::sort(input_segmentation.begin(), input_segmentation.end(), interval_rb_cmp());
 		
@@ -298,6 +311,7 @@ namespace {
 		}
 		
 		// For some reason the first block was not found.
+		std::cerr << "ERROR: First block not found.\n";
 		std::exit(EXIT_FAILURE);
 	}
 	
@@ -321,6 +335,13 @@ namespace {
 		lb::log_time(std::cerr) << "Loading the input segmentation…\n";
 		std::vector <interval> input_segmentation;
 		auto const aligned_size(read_input(stream, input_segmentation));
+		
+		if (input_segmentation.empty())
+		{
+			std::cerr << "ERROR: Got an empty segmentation.\n";
+			std::exit(EXIT_FAILURE);
+		}
+		
 		lb::log_time(std::cerr) << "Sorting…\n";
 		std::sort(input_segmentation.begin(), input_segmentation.end(), interval_rb_cmp());
 		

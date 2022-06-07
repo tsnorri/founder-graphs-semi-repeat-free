@@ -77,7 +77,8 @@ namespace founder_graphs {
 		if (m_handles.empty())
 			return false;
 		
-		auto range_len(rb - lb);
+		auto const range_len(rb - lb);
+		auto characters_left(range_len);
 		auto buffer_size(m_buffers.front().size());
 		std::size_t buffer_start_pos{};
 		libbio_always_assert_lte(m_file_position - buffer_size, lb);
@@ -92,7 +93,7 @@ namespace founder_graphs {
 		else if (lb < m_file_position)
 		{
 			buffer_start_pos = m_file_position - lb;
-			range_len -= buffer_start_pos;
+			characters_left -= buffer_start_pos;
 			if (m_file_position - buffer_size < lb)
 			{
 				auto const shift_amt(lb - (m_file_position - buffer_size));
@@ -108,7 +109,11 @@ namespace founder_graphs {
 		if (lb + buffer_size < rb)
 		{
 			// Read a multiple of m_preferred_block_size.
-			auto const read_amt(range_len < m_preferred_block_size ? m_preferred_block_size : range_len - range_len % m_preferred_block_size + m_preferred_block_size);
+			auto const read_amt(
+				characters_left < m_preferred_block_size
+				? m_preferred_block_size
+				: characters_left - characters_left % m_preferred_block_size + m_preferred_block_size
+			);
 			
 			// Handle the first items.
 			auto &first_handle(m_handles.front());
