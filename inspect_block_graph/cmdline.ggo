@@ -1,0 +1,9 @@
+# Copyright (c) 2022 Tuukka Norri
+# This code is licensed under MIT license (see LICENSE for details).
+
+package		"inspect_block_graph"
+purpose		"Inspect a block graph"
+
+option	"sequence-list"	s	"Sequence list path"			string	typestr = "filename"	required
+option	"segmentation"	e	"Optimized segmentation path"	string	typestr = "filename"	required
+option	"bgzip-input"	z	"Sequence input is bgzipped"									flag	off
