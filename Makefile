@@ -19,6 +19,14 @@ ifeq ($(shell uname -s),Linux)
 endif
 
 
+# “$() $()” is a literal space.
+OS_NAME = $(shell tools/os_name.sh)
+VERSION = $(subst $() $(),-,$(shell tools/git_version.sh))
+DIST_TARGET_DIR = founder-graphs-semi-repeat-free-$(VERSION)
+DIST_NAME_SUFFIX = $(if $(TARGET_TYPE),-$(TARGET_TYPE),)
+DIST_TAR_GZ = founder-graphs-semi-repeat-free-$(VERSION)-$(OS_NAME)$(DIST_NAME_SUFFIX).tar.gz
+
+
 all: $(BUILD_PRODUCTS)
 
 clean:
@@ -38,6 +46,18 @@ clean:
 
 clean-all: clean
 	$(MAKE) -C lib/libbio clean
+
+dist: $(DIST_TAR_GZ)
+
+$(DIST_TAR_GZ): $(BUILD_PRODUCTS)
+	$(MKDIR) -p $(DIST_TARGET_DIR)
+	$(CP) $(BUILD_PRODUCTS) $(DIST_TARGET_DIR)
+	$(CP) README.md $(DIST_TARGET_DIR)
+	$(CP) LICENSE $(DIST_TARGET_DIR)
+	$(CP) lib/swift-corelibs-libdispatch/LICENSE $(DIST_TARGET_DIR)/swift-corelibs-libdispatch-license.txt
+	$(CP) lib/cereal/LICENSE $(DIST_TARGET_DIR)/cereal-license.txt
+	$(TAR) czf $(DIST_TAR_GZ) $(DIST_TARGET_DIR)
+	$(RM) -rf $(DIST_TARGET_DIR)
 
 libfoundergraphs/libfoundergraphs.a: $(LIBBIO_DEPENDENCIES)
 	$(MAKE) -C libfoundergraphs
