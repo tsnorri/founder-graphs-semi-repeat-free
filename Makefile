@@ -11,7 +11,8 @@ BUILD_PRODUCTS =	build_cst/build_cst \
 					inspect_block_graph/inspect_block_graph \
 					int_vector_tool/int_vector_tool \
 					msa_index_cmp/msa_index_cmp \
-					optimize_segmentation/optimize_segmentation
+					optimize_segmentation/optimize_segmentation \
+					remove_byte_ranges/remove_byte_ranges
 
 LIBBIO_DEPENDENCIES = lib/libbio/src/libbio.a
 ifeq ($(shell uname -s),Linux)
@@ -97,6 +98,9 @@ msa_index_cmp/msa_index_cmp: libfoundergraphs/libfoundergraphs.a
 
 optimize_segmentation/optimize_segmentation: libfoundergraphs/libfoundergraphs.a
 	$(MAKE) -C optimize_segmentation
+
+remove_byte_ranges/remove_byte_ranges: libfoundergraphs/libfoundergraphs.a
+	$(MAKE) -C remove_byte_ranges
 
 lib/libbio/local.mk: local.mk
 	$(CP) local.mk lib/libbio
