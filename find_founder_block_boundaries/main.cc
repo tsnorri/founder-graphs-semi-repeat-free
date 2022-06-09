@@ -206,7 +206,7 @@ namespace {
 						++pos;
 						libbio_assert_lte(pos, aligned_size);
 
-						if (0 == pos % 10000)
+						if (0 == pos % 1000000)
 							lb::log_time(std::cerr) << "Position " << pos << '/' << aligned_size << "…\n";
 						
 						for (std::size_t j(0); j < seq_count; ++j)
